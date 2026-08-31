@@ -14,6 +14,7 @@ import { youTubeApiClient as apiClient } from "./youtube-api-client";
 import { youtubeChatEvents, type YouTubeAccountType, type YouTubeChannelInfo } from "./contracts";
 import { youtubeLiveMonitor } from "./live-monitor";
 import "./chat-ingest";
+import { startMembersRoster, stopMembersRoster } from "./members-roster";
 // WS-7: registers the "youtube" event source (Events UI), the ingest → event
 // mapping and the YouTube replace variables. Idempotent; see events/index.ts.
 import { registerYouTubeEvents } from "./events";
@@ -193,6 +194,7 @@ class YouTubeIntegration extends EventEmitter {
     unlink(): void {
         // WS-2: stop the live monitor (which also stops the chat reader hook).
         youtubeLiveMonitor.stop();
+        stopMembersRoster();
         youtubeAccountStore.clearAll();
         this._settings = {};
         logger.info("YouTube integration unlinked; cached accounts cleared.");
@@ -260,6 +262,8 @@ class YouTubeIntegration extends EventEmitter {
 
         // WS-2: kick the live monitor (60s live-check poll) before the connected emit.
         youtubeLiveMonitor.start();
+        // WS-9: start the members roster refresh (best-effort; no-ops pre-enrollment).
+        startMembersRoster();
 
         this.emit("connected", INTEGRATION_ID);
         logger.info("YouTube integration connected.");
@@ -270,6 +274,7 @@ class YouTubeIntegration extends EventEmitter {
         // that the integration disconnecting is intentionally NOT treated as a
         // stream offline transition (the broadcast itself may still be live).
         youtubeLiveMonitor.stop();
+        stopMembersRoster();
         this.connected = false;
         this.emit("disconnected", INTEGRATION_ID);
         logger.info("YouTube integration disconnected.");
