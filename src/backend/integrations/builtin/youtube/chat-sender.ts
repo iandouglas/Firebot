@@ -1,5 +1,6 @@
 import frontendCommunicator from "../../../common/frontend-communicator";
 import { LoggerCache } from "../../../logger-cache";
+import { NotificationManager } from "../../../notifications/notification-manager";
 
 import { youtubeAccountStore } from "./account-store";
 import { youTubeApiClient } from "./youtube-api-client";
@@ -241,6 +242,14 @@ export class YouTubeChatSender {
                     "error",
                     `YouTube chat sends are capped at ${this._dailySendBudget} per day to protect the YouTube API quota. The following message was NOT sent: "${text}"`
                 );
+                // WS-11: surface the quota block in the notification center too,
+                // not just the transient toast. Persisted so it survives a restart.
+                NotificationManager.addNotification({
+                    title: "YouTube chat quota reached",
+                    message: `YouTube chat sends are capped at ${this._dailySendBudget} per day to protect the YouTube API quota. The following message was NOT sent: "${text}"`,
+                    type: "alert",
+                    source: "internal"
+                }, true);
             }
             logger.warn(`YouTube chat send blocked: daily budget exhausted (${this._sendCount}/${this._dailySendBudget} used).`);
             return { success: false, skipped: "quota-budget-exhausted", account };

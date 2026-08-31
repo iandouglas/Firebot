@@ -539,4 +539,86 @@ describe("viewer-database re-key (WS-3)", () => {
             expect(TwitchApi.users.getUserById).not.toHaveBeenCalled();
         });
     });
+
+    describe("getViewersPage (WS-11 server-side platform filter)", () => {
+        it("returns only viewers of the requested platform and reports a filtered total", async () => {
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `twitch:${TWITCH_RAW_ID}`,
+                platform: "twitch",
+                username: "twitchuser"
+            }));
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `youtube:${YOUTUBE_CHANNEL_ID}`,
+                platform: "youtube",
+                twitch: false,
+                username: "ytuser"
+            }));
+
+            const page = await viewerDatabase.getViewersPage({
+                page: 1,
+                pageSize: 50,
+                platform: "youtube"
+            });
+
+            expect(page.totalUnfiltered).toBe(2);
+            expect(page.total).toBe(1);
+            expect(page.viewers).toHaveLength(1);
+            expect(page.viewers[0]._id).toBe(`youtube:${YOUTUBE_CHANNEL_ID}`);
+        });
+
+        it("ignores an unknown platform value and returns all viewers", async () => {
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `twitch:${TWITCH_RAW_ID}`,
+                platform: "twitch"
+            }));
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `youtube:${YOUTUBE_CHANNEL_ID}`,
+                platform: "youtube",
+                twitch: false
+            }));
+
+            const page = await viewerDatabase.getViewersPage({
+                page: 1,
+                pageSize: 50,
+                platform: "not-a-platform"
+            });
+
+            expect(page.totalUnfiltered).toBe(2);
+            expect(page.total).toBe(2);
+            expect(page.viewers).toHaveLength(2);
+        });
+
+        it("combines a platform filter with a search term", async () => {
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `twitch:${TWITCH_RAW_ID}`,
+                platform: "twitch",
+                username: "alice"
+            }));
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `youtube:${YOUTUBE_CHANNEL_ID}`,
+                platform: "youtube",
+                twitch: false,
+                username: "alice"
+            }));
+            await seed(getTestDb(), makeViewerRecord({
+                _id: `youtube:UCOTHERCHANNELID000000000000000000`,
+                platform: "youtube",
+                twitch: false,
+                username: "bob"
+            }));
+
+            const page = await viewerDatabase.getViewersPage({
+                page: 1,
+                pageSize: 50,
+                search: "alice",
+                platform: "youtube"
+            });
+
+            expect(page.totalUnfiltered).toBe(3);
+            expect(page.total).toBe(1);
+            expect(page.viewers).toHaveLength(1);
+            expect(page.viewers[0].username).toBe("alice");
+            expect(page.viewers[0]._id).toBe(`youtube:${YOUTUBE_CHANNEL_ID}`);
+        });
+    });
 });

@@ -4,7 +4,7 @@
     angular
         .module('firebotApp')
         .factory('chatMessagesService', function (settingsService,
-            soundService, backendCommunicator) {
+            soundService, backendCommunicator, accountAccess) {
             const service = {};
 
             service.chatFeedItems = [];
@@ -69,13 +69,22 @@
             // by the Twitch bot and formatted "[YT] DisplayName: message". Tag
             // them so the hideBotMessages filter can exempt them (relayed copies
             // stay visible while Firebot-authored command responses stay hidden).
-            // The relay itself does not set an outbound marker (WS-6 note), so we
-            // detect the relay format prefix here.
+            //
+            // The relay cannot set a real outbound marker that reaches the
+            // dashboard: the frontend send (twitch-chat-listeners.js) fires before
+            // the relay's chat-message handler runs, so any marker the relay sets
+            // on the object is too late for the feed item. We therefore detect the
+            // relay format prefix here, but ONLY for messages authored by the Twitch
+            // bot account — a viewer's message that happens to start with "[YT] "
+            // must not be treated as a relayed copy.
             const RELAY_PREFIX = "[YT] ";
+            const botAccountName = (accountAccess.accounts?.bot?.username ?? "").toLowerCase();
             const tagRelayedItem = (item) => {
                 if (item.type === "message"
                     && typeof item.data.rawText === "string"
-                    && item.data.rawText.startsWith(RELAY_PREFIX)) {
+                    && item.data.rawText.startsWith(RELAY_PREFIX)
+                    && botAccountName !== ""
+                    && (item.data.username ?? "").toLowerCase() === botAccountName) {
                     item.data.isRelay = true;
                 }
                 return item;

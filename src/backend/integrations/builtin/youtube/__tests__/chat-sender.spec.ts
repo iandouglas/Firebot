@@ -29,6 +29,12 @@ jest.mock("../../../../common/frontend-communicator", () => ({
     }
 }));
 
+jest.mock("../../../../notifications/notification-manager", () => ({
+    NotificationManager: {
+        addNotification: jest.fn()
+    }
+}));
+
 jest.mock("../youtube-api-client", () => ({
     youTubeApiClient: {
         insertChatMessage: jest.fn()
@@ -43,6 +49,7 @@ const mockLogger = {
 };
 
 import frontendCommunicator from "../../../../common/frontend-communicator";
+import { NotificationManager } from "../../../../notifications/notification-manager";
 import { youtubeAccountStore } from "../account-store";
 import { YouTubeApiError, youtubeChatEvents } from "../contracts";
 import {
@@ -348,6 +355,17 @@ describe("YouTube chat sender", () => {
                 expect.stringContaining("NOT sent")
             );
             expect(mockFrontendSend.mock.calls[0][1]).toContain("three (blocked)");
+
+            // WS-11: the quota block also lands a persistent notification-center entry.
+            expect(NotificationManager.addNotification).toHaveBeenCalledTimes(1);
+            expect(NotificationManager.addNotification).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: "YouTube chat quota reached",
+                    type: "alert",
+                    source: "internal"
+                }),
+                true
+            );
         });
 
         it("warns at 50, 75 and 80 sends (the final allowed send) with the default budget", async () => {

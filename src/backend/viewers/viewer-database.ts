@@ -72,6 +72,8 @@ interface ViewersPageRequest {
     sortField?: string;
     sortReversed?: boolean;
     search?: string;
+    /** Optional platform filter ("twitch" | "youtube"). WS-11: server-side filter. */
+    platform?: string;
 }
 
 interface ViewersPage {
@@ -517,7 +519,7 @@ class ViewerDatabase extends TypedEmitter<{
         return Object.values(await this._db.findAsync({}));
     }
 
-    async getViewersPage({ page, pageSize, sortField, sortReversed, search }: ViewersPageRequest): Promise<ViewersPage> {
+    async getViewersPage({ page, pageSize, sortField, sortReversed, search, platform }: ViewersPageRequest): Promise<ViewersPage> {
         if (this.isViewerDBOn() !== true) {
             return { viewers: [], total: 0, totalUnfiltered: 0 };
         }
@@ -531,11 +533,17 @@ class ViewerDatabase extends TypedEmitter<{
             ];
         }
 
+        // WS-11: server-side platform filter ("twitch" | "youtube"). Only applied
+        // when the value is a known platform; anything else leaves the query unfiltered.
+        if (isViewerPlatform(platform)) {
+            query.platform = platform;
+        }
+
         const sortObj = sortField ? { [sortField]: sortReversed ? -1 : 1 } : {};
 
         try {
             const totalUnfiltered = await this._db.countAsync({});
-            const total = query.$or ? await this._db.countAsync(query) : totalUnfiltered;
+            const total = Object.keys(query).length > 0 ? await this._db.countAsync(query) : totalUnfiltered;
 
             const viewers = await this._db.findAsync(query)
                 .sort(sortObj)
