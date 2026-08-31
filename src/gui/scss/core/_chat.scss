@@ -823,6 +823,16 @@
     justify-content: center;
 }
 
+.platform-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 3px;
+    font-size: 10px;
+    color: #ff0000;
+    vertical-align: middle;
+}
+
 .activity-message {
     display: -webkit-box;
     flex-grow: 9999;

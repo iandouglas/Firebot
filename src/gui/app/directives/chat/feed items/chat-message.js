@@ -163,6 +163,13 @@
                                     tooltip-append-to-body="true"
                                 ><i class="{{badge.icon}}" style="font-size: 10px;"></i> {{badge.text}}</span>
 
+                                <span
+                                    ng-if="$ctrl.message.platform === 'youtube'"
+                                    class="platform-badge"
+                                    uib-tooltip="YouTube"
+                                    tooltip-append-to-body="true"
+                                ><i class="fab fa-youtube"></i></span>
+
                                 <b ng-style="{'color': $ctrl.message.color}">{{$ctrl.message.userDisplayName != null ? $ctrl.message.userDisplayName : $ctrl.message.username}}</b>
                                 <span
                                     ng-if="$ctrl.message.username && $ctrl.message.userDisplayName && $ctrl.message.username.toLowerCase() !== $ctrl.message.userDisplayName.toLowerCase()"
