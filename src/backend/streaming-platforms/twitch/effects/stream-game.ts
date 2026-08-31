@@ -37,6 +37,10 @@ const model: EffectType<{
                     <div class="control__indicator"></div>
                 </label>
             </div>
+            <!-- D11: YouTube has no game/category taxonomy, so this effect is
+                 Twitch-only. The stream-title effect syncs titles to both
+                 platforms; category intentionally stays Twitch-only. -->
+            <p class="muted" style="font-size:11px;margin-top:5px;"><b>Note:</b> Category is Twitch-only — YouTube has no game/category taxonomy, so there is no YouTube category to set.</p>
         </eos-container>
 
         <eos-container header="Specific Category" pad-top="true" ng-if="effect.mode === 'specific'" >
