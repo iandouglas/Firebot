@@ -10,6 +10,7 @@ import { ApiResourceBase } from './api-resource-base';
 import type { TwitchApi } from "../";
 import { FrontendChatManager } from "../../../../chat/frontend-chat-manager";
 import frontendCommunicator from '../../../../common/frontend-communicator';
+import { youTubeModeration } from "../../../../integrations/builtin/youtube/moderation";
 
 interface UserModRequest {
     username: string;
@@ -19,6 +20,10 @@ interface UserModRequest {
 interface UserBanRequest {
     username: string;
     shouldBeBanned: boolean;
+    /** WS-8: when "youtube", route to the YouTube moderation module. */
+    platform?: "twitch" | "youtube";
+    /** WS-8: raw YouTube channel id (UC...) used for the YouTube path. */
+    channelId?: string;
 }
 
 interface UserVipRequest {
@@ -42,8 +47,23 @@ export class TwitchModerationApi extends ApiResourceBase<ModerationEvents> {
                 return;
             }
 
-            const { username, shouldBeBanned } = data;
+            const { username, shouldBeBanned, platform, channelId } = data;
             if (username == null || shouldBeBanned == null) {
+                return;
+            }
+
+            // WS-8 platform-aware dispatch: a YouTube context routes to the
+            // YouTube moderation module (owner-only API). The Twitch path below
+            // is preserved byte-for-byte.
+            if (platform === "youtube") {
+                if (channelId == null || channelId === "") {
+                    return;
+                }
+                if (shouldBeBanned) {
+                    await youTubeModeration.banUser(channelId);
+                } else {
+                    await youTubeModeration.unbanUser(channelId);
+                }
                 return;
             }
 
