@@ -337,6 +337,7 @@
 
                 $ctrl.getMessageContextMenu = (message) => {
                     const actions = [];
+                    const isYoutube = message.platform === "youtube";
 
                     actions.push({
                         name: "Details",
@@ -368,14 +369,35 @@
                         icon: "fa-quote-right"
                     });
 
-                    actions.push({
-                        name: "Pin Message",
-                        actionName: "message:pin",
-                        icon: "fa-thumbtack"
-                    });
+                    if (isYoutube) {
+                        // WS-8 / D10: YouTube moderation parity — delete/timeout/
+                        // ban/unban only. Mod/VIP/whisper are hidden (no API) and
+                        // pin/spotlight/shoutout are Twitch-only.
+                        actions.push({
+                            name: "Timeout",
+                            actionName: "user:timeout",
+                            icon: "fa-clock"
+                        });
 
-                    if (message.username.toLowerCase() !== accountAccess.accounts.streamer.username.toLowerCase() &&
+                        actions.push({
+                            name: "Ban",
+                            actionName: "user:ban",
+                            icon: "fa-ban"
+                        });
+
+                        actions.push({
+                            name: "Unban",
+                            actionName: "user:unban",
+                            icon: "fa-undo"
+                        });
+                    } else if (message.username.toLowerCase() !== accountAccess.accounts.streamer.username.toLowerCase() &&
                         message.username.toLowerCase() !== accountAccess.accounts.bot.username.toLowerCase()) {
+
+                        actions.push({
+                            name: "Pin Message",
+                            actionName: "message:pin",
+                            icon: "fa-thumbtack"
+                        });
 
                         actions.push({
                             name: "Whisper",
@@ -474,15 +496,26 @@
                 };
 
                 $ctrl.messageActionSelected = (action, username, userId, displayName, msgId, rawText, message) => {
+                    const isYoutube = message != null && message.platform === "youtube";
                     switch (action) {
                         case "message:pin":
                             chatMessagesService.pinMessage(msgId);
                             break;
                         case "message:delete":
-                            chatMessagesService.deleteMessage(msgId);
+                            if (isYoutube) {
+                                backendCommunicator.send("youtube:delete-message", { messageId: msgId });
+                            } else {
+                                chatMessagesService.deleteMessage(msgId);
+                            }
                             break;
                         case "user:timeout":
-                            updateChatField(`/timeout @${username} 300`);
+                            if (isYoutube) {
+                                // YouTube timeout default 300s (clamped to the
+                                // 30s–86399s API range on the backend).
+                                backendCommunicator.send("youtube:timeout-user", { channelId: userId, seconds: 300 });
+                            } else {
+                                updateChatField(`/timeout @${username} 300`);
+                            }
                             break;
                         case "user:ban":
                             utilityService
@@ -494,9 +527,16 @@
                                 })
                                 .then((confirmed) => {
                                     if (confirmed) {
-                                        backendCommunicator.send("update-user-banned-status", { username: username, shouldBeBanned: true });
+                                        if (isYoutube) {
+                                            backendCommunicator.send("youtube:ban-user", { channelId: userId });
+                                        } else {
+                                            backendCommunicator.send("update-user-banned-status", { username: username, shouldBeBanned: true });
+                                        }
                                     }
                                 });
+                            break;
+                        case "user:unban":
+                            backendCommunicator.send("youtube:unban-user", { channelId: userId });
                             break;
                         case "user:mod":
                             viewerRolesService.updateModRoleForUser(username, true);
