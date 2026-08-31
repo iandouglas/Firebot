@@ -104,6 +104,15 @@ jest.mock("../members-roster", () => ({
     stopMembersRoster: jest.fn()
 }));
 
+// WS-6: youtube.ts side-effect imports ./chat-relay, which pulls in the
+// twitch-chat-listeners → chat-command-handler → account-access → data-access
+// ⇄ logwrapper chain (unbootable under jest). Mock it here (youtube.spec.ts
+// doesn't exercise the relay).
+jest.mock("../chat-relay", () => ({
+    __esModule: true,
+    chatRelay: {}
+}));
+
 import { shell } from "electron";
 import authManager from "../../../../auth/auth-manager";
 import frontendCommunicator from "../../../../common/frontend-communicator";
