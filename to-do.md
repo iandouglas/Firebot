@@ -332,23 +332,35 @@ interface YouTubeIngestMessage {
 - `platform-dispatch` imports `TwitchApi` (CJS cycle with `twitch/api/index.ts` is safe — late-bound, call-time access only). New backend startup consumer: `chat-command-handler` imports the dispatch, so chat-sender subscribes to `stream-online`/`stream-offline` during backend init — before live-monitor can emit (WS-2 confirmed the same signature: `(videoId, liveChatId, concurrentViewers?, startedAt?)`).
 - Tests: `tests/platform-dispatch.spec.ts` (25), `src/backend/integrations/builtin/youtube/__tests__/chat-sender.spec.ts` (26), `tests/chat-effect.spec.ts` (17), `tests/chat-command-handler.spec.ts` (6). Full suite at WS-5 completion: 19 suites / 306 tests green (`tsc --noEmit`, `npm run lint` green).
 
-## WS-6 — Cross-platform chat relay
+## WS-6 — Cross-platform chat relay **[x] DONE (code + unit tests; live QA in WS-11)**
 
 - **Depends on:** WS-4 (YT ingest events), WS-5 (dispatch), WS-1 settings keys (relayEnabled, relayMaxPerMinute)
 - **Owns:** `src/backend/integrations/builtin/youtube/chat-relay.ts` (+ settings rendering additions live in WS-1's settings page — file coordination via WS-1 keys, no file edits here beyond its own module)
 
 ### Tasks
-- [ ] Subscribe to Twitch chat-message EventEmitter (exported from `twitch-chat-listeners`) AND `youtubeChatEvents` — relay only messages not authored by any of the four logged-in identities
-- [ ] Twitch→YT: join **text parts only** (emote/cheermote/3rd-party parts dropped per D6 — not converted), format `[Twitch] ${displayName}: ${text}`, truncate 200, send via `account:"bot"`, respect cap + budget counters (shares WS-5 daily budget accounting but separate cap)
-- [ ] YT→Twitch: format `[YT] ${displayName}: ${text}`, send Twitch side via dispatch (`sendAsBot:true`)
-- [ ] Gate: only while BOTH platforms live+connected; when relay disabled at runtime → unsubscribe cleanly
-- [ ] Rate cap: sliding 60s window, drop silently beyond cap (log at debug), settings cap per side
-- [ ] Relay markers: append `isRelay:true, sourcePlatform` to the FirebotChatMessage we *emit* from ingest for our OWN sent copies? — no: our copies never enter ingest (self-filter). Verify + document in code comment
-- [ ] Dashboard visibility: relayed copies ARE shown (they're authored by bots — check `hideBotMessages` filter in `cms.chatFeedItems` pipeline; if it filters them, tag relayed items and adjust filter so only *Firebot-authored command responses* stay hidden — coordinate file ownership with WS-10 for that filter file)
+- [x] Subscribe to Twitch chat-message EventEmitter (exported from `twitch-chat-listeners`) AND `youtubeChatEvents` — relay only messages not authored by any of the four logged-in identities
+- [x] Twitch→YT: join **text parts only** (emote/cheermote/3rd-party parts dropped per D6 — not converted), format `[Twitch] ${displayName}: ${text}`, truncate 200, send via `account:"bot"`, respect cap + budget counters (shares WS-5 daily budget accounting but separate cap)
+- [x] YT→Twitch: format `[YT] ${displayName}: ${text}`, send Twitch side via dispatch (`sendAsBot:true`)
+- [x] Gate: only while BOTH platforms live+connected; when relay disabled at runtime → unsubscribe cleanly
+- [x] Rate cap: sliding 60s window, drop silently beyond cap (log at debug), settings cap per side
+- [x] Relay markers: append `isRelay:true, sourcePlatform` to the FirebotChatMessage we *emit* from ingest for our OWN sent copies? — no: our copies never enter ingest (self-filter). Verify + document in code comment
+- [x] Dashboard visibility: relayed copies ARE shown (they're authored by bots — check `hideBotMessages` filter in `cms.chatFeedItems` pipeline; if it filters them, tag relayed items and adjust filter so only *Firebot-authored command responses* stay hidden — coordinate file ownership with WS-10 for that filter file)
 
 ### Acceptance
-- [ ] Two browser sessions (Twitch + YT): messages flow both directions, no loops (watch ≥5 min), emotes stripped on Twitch→YT, `[Twitch]`/`[YT]` prefixes correct
-- [ ] Toggle off mid-stream → relay stops immediately; cap prevents quota spikes (verify counter)
+- [ ] Two browser sessions (Twitch + YT): messages flow both directions, no loops (watch ≥5 min), emotes stripped on Twitch→YT, `[Twitch]`/`[YT]` prefixes correct — unit-verified; live QA in WS-11
+- [ ] Toggle off mid-stream → relay stops immediately; cap prevents quota spikes (verify counter) — unit-verified; live QA in WS-11
+
+### WS-6 completion notes (for WS-10 / WS-11)
+- **Module:** `chat-relay.ts` exports `ChatRelay` (class) + `chatRelay` (singleton) + pure helpers `formatTwitchToYoutube` / `formatYoutubeToTwitch` / `joinTextParts` / `truncate`. A settings poller (2s, unref'd) drives `subscribe()`/`unsubscribe()` from `relayEnabled`; handlers also re-check the setting at send time. `isActive()` = subscribed && relayEnabled && YT-live && `ConnectionManager.chatIsConnected`.
+- **Settings access (no youtube.ts getter needed):** relay reads `integrationManager.getIntegrationDefinitionById("youtube")?.userSettings?.relaySettings.{relayEnabled, relayMaxPerMinute}` — the same `userSettings` mechanism AWS/Discord integrations use for their `settingCategories` settings (the frontend settings modal persists these under `userSettings`, NOT `definition.settings`).
+- **WIRING NEEDED (youtube.ts, one line):** add a side-effect import `import "./chat-relay";` so the singleton's settings poller runs for the app's lifetime. Without it the module never loads. (No other youtube.ts change required — the poller self-manages subscribe/unsubscribe on the toggle.)
+- **Loop prevention (invariant #2):** four-identity self-filter mirrors chat-ingest's index — twitch streamer/bot usernames + yt streamer/bot channel ids, plus the YT channel-title↔Twitch-username "same display name" case. Belt-and-suspenders: a message carrying `isRelay === true` is skipped (defensive; relayed copies are bot-authored so the self-filter already drops them).
+- **Twitch→YT text extraction:** `joinTextParts` keeps `text`/`link`/`mention` parts and drops `emote`/`cheermote`/`third-party-emote` (D6 — NOT converted to codes). Full formatted string truncated to 200 (YT cap); YT→Twitch truncated to 500 (Twitch cap) defensively.
+- **Cap:** per-direction sliding 60s window (`relayMaxPerMinute`, default 12; 0 = no relay). Drops silently with a debug log. Shares WS-5's daily quota budget via the dispatch/chat-sender (no separate counter).
+- **Gate:** YT-live tracked via `youtubeChatEvents` stream-online/offline (seeded from `youTubeChatSender.isLive()` on subscribe so an already-live broadcast relays immediately) + reset on `integration-disconnected` ("youtube"); Twitch side via `ConnectionManager.chatIsConnected`.
+- **Dashboard visibility (WS-10 coordination):** `hideBotMessages` filter (`app-main.js`, WS-10-owned) hides messages whose `username` matches the **Twitch bot** username when `ChatHideBotAccountMessages` is on. Twitch→YT relayed copies (authored by the YT bot) are NOT hidden (username ≠ Twitch bot). YT→Twitch relayed copies (authored by the Twitch bot) WOULD be hidden. If relayed copies must stay visible, WS-10 should tag relayed items (e.g. `isRelay`) and exempt them in that filter so only Firebot-authored command responses stay hidden.
+- **Tests:** `__tests__/chat-relay.spec.ts` (27) — format/truncation both directions, emote-part stripping, four-identity self-filter + relay-marker, sliding-window cap (per-direction), both-live gating + disconnect reset, toggle subscribe/unsubscribe, never-throw on dispatch failure. Full suite at WS-6 completion: 23 suites / 388 tests green (`tsc --noEmit`, `npm run lint` green).
+- **Pre-existing fix (WS-9 regression, outside WS-6 write set):** `youtube.spec.ts` broke when WS-9 wired `members-roster` into `youtube.ts` (members-roster pulls in the viewer-database → data-access ⇄ logwrapper chain, unbootable under jest). Added a `jest.mock("../members-roster")` stub (startMembersRoster/stopMembersRoster) alongside the existing chat-ingest mock — additive only, restores the 19 youtube.spec.ts tests.
 
 ## WS-7 — Monetization events + variables (youtube event source) **[x] DONE (code) — live verification pending WS-0**
 
