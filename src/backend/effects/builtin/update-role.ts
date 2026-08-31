@@ -3,6 +3,7 @@ import type { BasicViewer, EffectType } from "../../../types";
 import { TwitchApi } from "../../streaming-platforms/twitch/api";
 import customRolesManager from "../../roles/custom-roles-manager";
 import viewerDatabase from "../../viewers/viewer-database";
+import { unscopeViewerId } from "../../viewers/viewer-identity";
 import { LoggerCache } from "../../logger-cache";
 
 const logger = LoggerCache.getLogger("Effects");
@@ -167,7 +168,9 @@ const effect: EffectType<{
             const viewer = await viewerDatabase.getViewerByUsername(user.username);
 
             if (viewer) {
-                user.id = viewer._id;
+                // Viewer records are keyed by scoped ids ("twitch:<id>", D9);
+                // custom-role lists must keep holding RAW platform ids.
+                user.id = unscopeViewerId(viewer._id);
                 user.displayName = viewer.displayName;
             } else {
                 const twitchUser = await TwitchApi.users.getUserByName(user.username);

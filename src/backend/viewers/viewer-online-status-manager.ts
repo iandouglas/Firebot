@@ -106,9 +106,20 @@ class ViewerOnlineStatusManager {
                 dbData.disableActiveUserList = true;
             }
 
-            await viewerDatabase.getViewerDb().updateAsync({ _id: viewer.id }, { $set: dbData });
+            // Viewer records are keyed by the scoped "<platform>:<id>" _id (D9);
+            // resolve the chat packet's raw (or already-scoped) id to the record
+            // so the online update doesn't miss it (same pattern as
+            // setChatViewerOffline below).
+            const firebotViewer = await viewerDatabase.getViewerById(viewer.id);
 
-            await viewerDatabase.calculateAutoRanks(viewer.id);
+            if (firebotViewer == null) {
+                this._logger.debug(`Couldnt set viewer ${viewer.id} online: they aren't in the viewer database yet.`);
+                return;
+            }
+
+            await viewerDatabase.getViewerDb().updateAsync({ _id: firebotViewer._id }, { $set: dbData });
+
+            await viewerDatabase.calculateAutoRanks(firebotViewer._id);
 
         } catch (error) {
             this._logger.error("Failed to set viewer to online", error);
