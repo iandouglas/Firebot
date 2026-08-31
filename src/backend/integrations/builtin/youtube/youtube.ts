@@ -15,6 +15,9 @@ import { youtubeChatEvents, type YouTubeAccountType, type YouTubeChannelInfo } f
 import { youtubeLiveMonitor } from "./live-monitor";
 import "./chat-ingest";
 import { startMembersRoster, stopMembersRoster } from "./members-roster";
+// WS-6: cross-platform relay — side-effect import so its settings poller runs
+// for the app's lifetime (self-manages subscribe/unsubscribe).
+import "./chat-relay";
 // WS-7: registers the "youtube" event source (Events UI), the ingest → event
 // mapping and the YouTube replace variables. Idempotent; see events/index.ts.
 import { registerYouTubeEvents } from "./events";
