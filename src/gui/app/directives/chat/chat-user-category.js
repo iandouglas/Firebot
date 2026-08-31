@@ -15,7 +15,7 @@
                 <div style="font-size: 12px; opacity: 0.6;">{{$ctrl.category}}</div>
                 <div
                     class="chat-user-wrapper"
-                    ng-repeat="user in cms.getFilteredChatUserList() | chatUserRole:$ctrl.roleKey | orderBy:'username':true | orderBy:'active':true as filtered track by user.id"
+                    ng-repeat="user in $ctrl.getUsers() | chatUserRole:$ctrl.roleKey | orderBy:'username':true | orderBy:'active':true as filtered track by user.id"
                 >
                     <div class="chat-user-img-wrapper">
                         <img ng-src="{{user.profilePicUrl}}" />
@@ -35,9 +35,23 @@
                 </div>
             </div>
             `,
-            controller: function($scope, chatMessagesService, utilityService) {
+            controller: function($scope, chatMessagesService, utilityService, youtubeMembersService) {
+
+                const $ctrl = this;
 
                 $scope.cms = chatMessagesService;
+
+                // The "Members" category (role-key "member") is fed by the YouTube
+                // members roster: it renders roster members who are currently
+                // present in chat. The chatUserRole filter passes unknown role
+                // keys through, so the pre-filtered member list is shown as-is.
+                // Every other category keeps the full chat user list.
+                $ctrl.getUsers = function() {
+                    if (this.roleKey === "member") {
+                        return youtubeMembersService.getMembersInChat($scope.cms.getFilteredChatUserList());
+                    }
+                    return $scope.cms.getFilteredChatUserList();
+                };
 
                 $scope.showUserDetailsModal = (userId) => {
                     if (userId == null) {
