@@ -13,6 +13,7 @@ import twitchChat from "../chat/twitch-chat";
 import customRolesManager from "../roles/custom-roles-manager";
 import firebotRolesManager from "../roles/firebot-roles-manager";
 import teamRolesManager from "../roles/team-roles-manager";
+import { inferViewerPlatformFromId, safeParseViewerId } from "../viewers/viewer-identity";
 import twitchRolesManager from "../../shared/twitch-roles";
 import { TwitchApi } from "../streaming-platforms/twitch/api";
 import { LoggerCache } from "../logger-cache";
@@ -333,10 +334,45 @@ class CurrencyManager {
             return null;
         }
 
-        const viewer = await viewerDatabase.getViewerById(userId);
+        // Platform-aware viewer resolution (WS-3 audit follow-up, WS-7):
+        // - already-scoped "<platform>:<id>" ids resolve via getViewerByScopedId;
+        // - raw ids default to the Twitch lookup, EXCEPT ids shaped like YouTube
+        //   channel ids ("UC..."), which must resolve against the "youtube:<id>"
+        //   record (getViewerById would wrongly scope them to twitch);
+        // - missing YouTube records are created via upsertYouTubeViewer (the same
+        //   path the chat ingest uses) so YouTube adjustments never silently drop.
+        const parsed = safeParseViewerId(userId);
+        const rawYouTubeId = parsed?.platform === "youtube"
+            ? parsed.rawId
+            : parsed == null && inferViewerPlatformFromId(userId) === "youtube"
+                ? userId
+                : null;
+
+        let viewer: FirebotViewer | null | undefined;
+        if (rawYouTubeId != null) {
+            viewer = await viewerDatabase.getViewerByScopedId("youtube", rawYouTubeId);
+            if (viewer == null) {
+                // displayName is the only identifier we have until the YouTube
+                // ingest upserts the real one; upsertYouTubeViewer updates it
+                // once a message arrives from that channel.
+                viewer = await viewerDatabase.upsertYouTubeViewer(rawYouTubeId, { displayName: rawYouTubeId });
+            }
+        } else if (parsed != null) {
+            viewer = await viewerDatabase.getViewerByScopedId(parsed.platform, parsed.rawId);
+        } else {
+            viewer = await viewerDatabase.getViewerById(userId);
+        }
 
         if (viewer == null) {
             return null;
+        }
+
+        // YouTube records must be adjusted straight from the id-resolved record:
+        // the username re-resolution below only matches twitch:true records, so
+        // it would miss every YouTube viewer (WS invariant #1).
+        if (safeParseViewerId(viewer._id)?.platform === "youtube") {
+            await this.adjustCurrency(viewer, currencyId, value, overrideValue ? 'set' : 'adjust');
+            return true;
         }
 
         return await this.adjustCurrencyForViewer(viewer.username, currencyId, value, overrideValue ? 'set' : 'adjust');
