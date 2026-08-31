@@ -409,18 +409,31 @@ interface YouTubeIngestMessage {
 - [ ] Menu on a YT message never shows mod/vip/whisper; Twitch messages unchanged
 - [ ] Title update from command/effect lands on both platforms (verify in YT Studio + Twitch)
 
-## WS-9 — Members roster (best-effort)
+## WS-9 — Members roster (best-effort) **[x] DONE (code + unit tests; live verification pending WS-0 enrollment)**
 
 - **Depends on:** WS-1 (client), WS-3 (roster keyed per platform)
 - **Owns:** `src/backend/integrations/builtin/youtube/members-roster.ts`; frontend additions for a "Members" row in Chat Users panel `src/gui/app/directives/chat/chat-user-category.js` (usage-level edit only) + chat template row
 
 ### Tasks
-- [ ] `listMembers()` + `listMembershipLevels()` on connect (and every 15 min while live); graceful `403`/quota → disable roster, log once, set flag `membersApiAvailable:false`
-- [ ] Cache roster (id/name/level); expose to chat mapping as an *additional* role source (sponsor flag from chat remains primary)
-- [ ] Frontend: CHAT USERS panel gains "Members" category (YT members present in chat + roster), platform badge via WS-10 conventions
+- [x] `listMembers()` + `listMembershipLevels()` on connect (and every 15 min while live); graceful `403`/quota → disable roster, log once, set flag `membersApiAvailable:false`
+- [x] Cache roster (id/name/level); expose to chat mapping as an *additional* role source (sponsor flag from chat remains primary)
+- [x] Frontend: CHAT USERS panel gains "Members" category (YT members present in chat + roster), platform badge via WS-10 conventions
 
 ### Acceptance
-- [ ] Module no-ops cleanly pre-enrollment (user isn't enrolled — acceptance is "does not error, logs availability state"); revisit when enrolled (SETUP.md §5)
+- [x] Module no-ops cleanly pre-enrollment (user isn't enrolled — acceptance is "does not error, logs availability state"); revisit when enrolled (SETUP.md §5)
+
+### WS-9 completion notes (for WS-4 / WS-10 / WS-11)
+- **Module:** `members-roster.ts` exports `startMembersRoster()` / `stopMembersRoster()` (lifecycle), `getYouTubeMembersRoster()` / `isMembersApiAvailable()` / `getMembershipLevels()` (read-only accessors), and `subscribeToMembersRoster(cb)` (returns unsubscribe) for future WS role integration. Singleton `youtubeMembersRoster` + exported `YouTubeMembersRoster` class (tests).
+- **Wiring (REPORTED, NOT EDITED — youtube.ts is WS-1/2/7-owned):** add `startMembersRoster();` immediately after `youtubeLiveMonitor.start();` in `connect()` and `stopMembersRoster();` after `youtubeLiveMonitor.stop();` in both `disconnect()` and `unlink()`. Until wired, the module is dormant (no listeners registered, no fetches) — safe. The module tracks live state via `youtubeChatEvents` "stream-online"/"stream-offline" (contract-compliant, no cross-module import).
+- **Cadence:** initial fetch on connect + chained `setTimeout` every 15 min **while live** (injectable `refreshIntervalMs` for tests; timers unref'd). Offline ticks skip the fetch but keep the timer armed so the roster refreshes once the stream is live.
+- **Graceful degradation (D12):** `auth`/`quota`/any non-rate-limit 403 (member-data gating surfaces as kind "other" + httpStatus 403) → `membersApiAvailable:false`, warn ONCE, retry only on the next scheduled tick (no tight loop). `rate-limit`/`not-found`/non-403 "other" are transient — keep last availability, log at warn, retry next tick. A later success flips available back on and re-arms the warning.
+- **Roster shape:** `[{channelId, displayName, levelName}]`; `levelName` = member's `highestAccessibleLevelDisplayName` ?? level lookup by `highestAccessibleLevel` id ?? "Member". Levels list cached separately (`getMembershipLevels()`).
+- **Viewer DB (WS-3 API):** roster members upserted via `viewerDatabase.upsertYouTubeViewer(channelId, {displayName})` (per-channel throttle, default 15 min) so members exist as `platform:"youtube"` records before they chat; avatar/username fill in on first chat (WS-4).
+- **Frontend push:** `frontendCommunicator.send("youtube:members-updated", {available, members})` on change (mirrors WS-1 `youtube:bot-auth-update` shape; deduped by serialized payload).
+- **Frontend:** new `src/gui/app/services/youtube-members.service.js` (auto-loaded via `services/**/*.js` glob) stores the roster + availability and exposes `getMembersInChat(chatUsers)` (roster ∩ chat users). `chat-user-category.js` gains a `getUsers()` controller method — for `role-key="member"` it feeds the roster members present in chat; the existing `chatUserRole` filter passes unknown role keys through, so no app-main.js edit was needed. `_chat-messages.html` adds `<chat-user-category category="Members" role-key="member" />` (only that line). The category hides itself when the roster is unavailable or empty (`ng-show` on the `filtered` alias).
+- **Role integration (read-only):** roster is an *additional* role source only — the per-message `isSponsor` flag from chat ingest remains primary (D9/D13). WS-4/WS-10 can consume `getYouTubeMembersRoster()`/`subscribeToMembersRoster()` if they want member-level roles; no chat-message-mapper change was made.
+- **Tests:** `__tests__/members-roster.spec.ts` (10): happy path (2 levels, mixed members → level-name mapping + payload + viewer upsert), 403 → unavailable + single warn + no retry spam (offline ticks don't re-fetch; live tick retries exactly once), quota → unavailable, recovery to available, rate-limit transient, 15-min cadence (live/offline), no-op without streamer account, stop() clears timer, subscribe hook. Full suite at WS-9 completion: **22 suites / 361 tests green** (`tsc --noEmit`, `npm run lint` green).
+- **Live verification (post-enrollment, SETUP.md §5):** link streamer account → connect → confirm a single "members API unavailable" warn pre-enrollment; after enrollment, confirm roster populates, `youtube:members-updated` fires, Members category appears in CHAT USERS for members present in chat, and members exist in the Viewers DB as `platform:"youtube"`. Quota cost: 2 list units per fetch (members + levels), ≤ ~1 fetch/15 min while live.
 
 ## WS-10 — Frontend polish & platform awareness
 
