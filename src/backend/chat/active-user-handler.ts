@@ -343,6 +343,67 @@ class ActiveUserHandler extends TypedEmitter<Events> {
         this.updateViewerActiveStatus((isUsername ? other : usernameOrId) as string);
     }
 
+    /**
+     * Registers a YouTube chatter in the Chat Users panel (platform-tagged).
+     *
+     * Unlike `addActiveUser` (Twitch), this does NOT create the viewer record or
+     * increment chatMessages — the YouTube chat ingest (WS-4) already upserts the
+     * viewer and accrues chat-message stats before calling this. It only manages
+     * the in-memory active presence + cached frontend viewer so the Chat Users
+     * panel (WS-10 renders the platform category) includes YouTube chatters.
+     *
+     * Interplay with `clearAllActiveUsers()`: a Twitch disconnect flushes the
+     * shared active/online caches (existing behavior). YouTube chatters are
+     * re-registered on their next chat message, so the panel self-heals while the
+     * YouTube stream stays live. YouTube chatters are intentionally NOT added to
+     * `_onlineUsers` (Twitch-centric online-user effects/counts stay Twitch-only).
+     */
+    async addYouTubeActiveUser(user: {
+        id: string;
+        username: string;
+        displayName: string;
+        profilePicUrl: string;
+        roles: string[];
+    }): Promise<void> {
+        if (user.username === "jtv" || user.displayName === "jtv") {
+            return;
+        }
+
+        const ttl = SettingsManager.getSetting("ActiveChatUserListTimeout") * 60;
+
+        const newViewer: FrontendViewer = {
+            id: user.id,
+            username: user.username.toLowerCase(),
+            displayName: user.displayName,
+            roles: user.roles,
+            profilePicUrl: user.profilePicUrl,
+            active: true,
+            platform: "youtube"
+        };
+
+        const existingViewerIndex = this._cachedFrontendViewers.findIndex(v => v.id === newViewer.id);
+        if (existingViewerIndex > -1) {
+            this._cachedFrontendViewers.splice(existingViewerIndex, 1, newViewer);
+            this.sendViewerUpdateToFrontend(newViewer);
+        } else {
+            this._cachedFrontendViewers.push(newViewer);
+            frontendCommunicator.send("chat:viewer-joined", newViewer);
+        }
+
+        const userActive = this._activeUsers.get(user.id);
+        if (!userActive) {
+            this._logger.debug(`Marking YouTube user ${newViewer.displayName} as active with ttl of ${ttl} secs`, ttl);
+            this._activeUsers.set(user.id, newViewer.username, ttl);
+            this._activeUsers.set(newViewer.username, user.id, ttl);
+        } else {
+            this._logger.debug(`Updating YouTube user ${newViewer.displayName}'s "active" ttl to ${ttl} secs`, ttl);
+            this._activeUsers.ttl(user.id, ttl);
+            this._activeUsers.ttl(newViewer.username, ttl);
+        }
+
+        this.updateViewerActiveStatus(user.id);
+    }
+
     clearAllActiveUsers() {
         this._activeUsers.flushAll();
         this._onlineUsers.flushAll();

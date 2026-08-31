@@ -42,4 +42,10 @@ export type FrontendViewer = {
     profilePicUrl: string;
     active: boolean;
     disableViewerList?: boolean;
+    /**
+     * Which platform the viewer is present on. Absent/null = "twitch" (legacy
+     * behavior). Set by the YouTube chat ingest (WS-4) so the Chat Users panel
+     * (WS-10) can render a platform category/badge.
+     */
+    platform?: "twitch" | "youtube";
 };
