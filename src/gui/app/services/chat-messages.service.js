@@ -65,7 +65,24 @@
 
             // Chat feed
 
+            // WS-6/WS-10 relay visibility: YT→Twitch relayed copies are authored
+            // by the Twitch bot and formatted "[YT] DisplayName: message". Tag
+            // them so the hideBotMessages filter can exempt them (relayed copies
+            // stay visible while Firebot-authored command responses stay hidden).
+            // The relay itself does not set an outbound marker (WS-6 note), so we
+            // detect the relay format prefix here.
+            const RELAY_PREFIX = "[YT] ";
+            const tagRelayedItem = (item) => {
+                if (item.type === "message"
+                    && typeof item.data.rawText === "string"
+                    && item.data.rawText.startsWith(RELAY_PREFIX)) {
+                    item.data.isRelay = true;
+                }
+                return item;
+            };
+
             backendCommunicator.on("chat:new-chat-feed-item", (item) => {
+                tagRelayedItem(item);
                 service.chatFeedItems.push(item);
 
                 if (item.type === "message") {
@@ -80,6 +97,7 @@
             });
 
             const updateChatFeedItem = (item) => {
+                tagRelayedItem(item);
                 const existingItemIndex = service.chatFeedItems.findIndex(i => i.id === item.id && i.type === item.type);
 
                 if (existingItemIndex > -1) {
@@ -96,7 +114,7 @@
             );
 
             backendCommunicator.on("chat:all-chat-feed-items", (chatFeedItems) => {
-                service.chatFeedItems = chatFeedItems;
+                service.chatFeedItems = (chatFeedItems || []).map(tagRelayedItem);
             });
 
             // Viewers

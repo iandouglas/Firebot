@@ -147,6 +147,7 @@
         videoService,
         viewerRanksService,
         viewerRolesService,
+        youtubeErrorsService,
         webhooksService,
         uiExtensionsService,
         pluginsService,
@@ -531,6 +532,13 @@
             const botAccountName = accountAccess.accounts.bot.username.toLowerCase();
             return elements.filter((e) => {
                 if (e.type !== 'message') {
+                    return true;
+                }
+                // WS-6/WS-10: YT→Twitch relayed copies are authored by the Twitch
+                // bot but must stay visible. They're tagged isRelay in the feed
+                // pipeline (chat-messages.service.js). Only Firebot-authored
+                // command responses stay hidden.
+                if (e.data.isRelay === true) {
                     return true;
                 }
                 return e.data.username?.toLowerCase() !== botAccountName;
