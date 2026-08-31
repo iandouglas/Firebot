@@ -94,6 +94,16 @@ jest.mock("../chat-ingest", () => ({
     stopChatIngest: jest.fn()
 }));
 
+// WS-9: youtube.ts imports startMembersRoster/stopMembersRoster from
+// ./members-roster, which pulls in the viewer-database → data-access ⇄
+// logwrapper chain (unbootable under jest). Mock it here (youtube.spec.ts
+// doesn't exercise the roster).
+jest.mock("../members-roster", () => ({
+    __esModule: true,
+    startMembersRoster: jest.fn(),
+    stopMembersRoster: jest.fn()
+}));
+
 import { shell } from "electron";
 import authManager from "../../../../auth/auth-manager";
 import frontendCommunicator from "../../../../common/frontend-communicator";
