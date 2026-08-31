@@ -65,6 +65,25 @@ jest.mock("../youtube-api-client", () => ({
     }
 }));
 
+// WS-7: youtube.ts init() wires the event source + variables registration.
+// The real EventManager/ReplaceVariableManager chains are unbootable under jest
+// (heavy module graphs); these stubs keep this suite import-light (WS-7).
+jest.mock("../../../../events/event-manager", () => ({
+    EventManager: {
+        registerEventSource: jest.fn(),
+        unregisterEventSource: jest.fn(),
+        triggerEvent: jest.fn(),
+        triggerUiRefresh: jest.fn()
+    }
+}));
+
+jest.mock("../../../../variables/replace-variable-manager", () => ({
+    ReplaceVariableManager: {
+        registerReplaceVariable: jest.fn(),
+        unregisterReplaceVariable: jest.fn()
+    }
+}));
+
 import { shell } from "electron";
 import authManager from "../../../../auth/auth-manager";
 import frontendCommunicator from "../../../../common/frontend-communicator";

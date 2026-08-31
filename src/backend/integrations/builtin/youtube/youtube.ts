@@ -12,6 +12,11 @@ import { LoggerCache } from "../../../logger-cache";
 import { youtubeAccountStore } from "./account-store";
 import { youTubeApiClient as apiClient } from "./youtube-api-client";
 import { youtubeChatEvents, type YouTubeAccountType, type YouTubeChannelInfo } from "./contracts";
+import { youtubeLiveMonitor } from "./live-monitor";
+import "./chat-ingest";
+// WS-7: registers the "youtube" event source (Events UI), the ingest → event
+// mapping and the YouTube replace variables. Idempotent; see events/index.ts.
+import { registerYouTubeEvents } from "./events";
 import {
     BOT_ACCOUNT_PROVIDER_ID,
     STREAMER_ACCOUNT_PROVIDER_ID,
@@ -145,7 +150,12 @@ class YouTubeIntegration extends EventEmitter {
         this._wireAuthSuccessListener();
         this._wireFrontendRoutes();
 
-        // WS-2 will register the live monitor here (start on connect, stop on disconnect).
+        // WS-7: event source + variables registration (see events/index.ts).
+        registerYouTubeEvents();
+
+        // WS-2: the live monitor is lifecycle-driven from connect()/disconnect();
+        // the chat reader (stub in chat-ingest.ts) is driven by the monitor's
+        // transitions — WS-4 owns the implementation.
     }
 
     /**
@@ -181,7 +191,8 @@ class YouTubeIntegration extends EventEmitter {
     }
 
     unlink(): void {
-        // WS-2 will also stop the chat poll / live monitor teardown here.
+        // WS-2: stop the live monitor (which also stops the chat reader hook).
+        youtubeLiveMonitor.stop();
         youtubeAccountStore.clearAll();
         this._settings = {};
         logger.info("YouTube integration unlinked; cached accounts cleared.");
@@ -247,13 +258,18 @@ class YouTubeIntegration extends EventEmitter {
 
         this.connected = true;
 
-        // WS-2 will register/start the live monitor here before the connected event.
+        // WS-2: kick the live monitor (60s live-check poll) before the connected emit.
+        youtubeLiveMonitor.start();
+
         this.emit("connected", INTEGRATION_ID);
         logger.info("YouTube integration connected.");
     }
 
     disconnect(): void {
-        // WS-2 will stop the live monitor + chat reader here.
+        // WS-2: stop the live monitor + clear its cached stream state. Note
+        // that the integration disconnecting is intentionally NOT treated as a
+        // stream offline transition (the broadcast itself may still be live).
+        youtubeLiveMonitor.stop();
         this.connected = false;
         this.emit("disconnected", INTEGRATION_ID);
         logger.info("YouTube integration disconnected.");
