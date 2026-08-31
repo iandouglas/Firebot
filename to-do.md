@@ -460,19 +460,35 @@ interface YouTubeIngestMessage {
 - **Tests:** `__tests__/members-roster.spec.ts` (10): happy path (2 levels, mixed members → level-name mapping + payload + viewer upsert), 403 → unavailable + single warn + no retry spam (offline ticks don't re-fetch; live tick retries exactly once), quota → unavailable, recovery to available, rate-limit transient, 15-min cadence (live/offline), no-op without streamer account, stop() clears timer, subscribe hook. Full suite at WS-9 completion: **22 suites / 361 tests green** (`tsc --noEmit`, `npm run lint` green).
 - **Live verification (post-enrollment, SETUP.md §5):** link streamer account → connect → confirm a single "members API unavailable" warn pre-enrollment; after enrollment, confirm roster populates, `youtube:members-updated` fires, Members category appears in CHAT USERS for members present in chat, and members exist in the Viewers DB as `platform:"youtube"`. Quota cost: 2 list units per fetch (members + levels), ≤ ~1 fetch/15 min while live.
 
-## WS-10 — Frontend polish & platform awareness
+## WS-10 — Frontend polish & platform awareness **[x] DONE (code; manual QA in WS-11)**
 
 - **Depends on:** WS-4 + WS-7 + WS-8 outputs to polish
 - **Owns:** `src/gui/app/directives/chat/feed items/chat-message.js` (platform badge only — menu gating is WS-8), `src/gui/app/services/chat-messages.service.js` (feed filter tweaks if not done in WS-6), dashboard stream-info component (`src/gui/app/directives/misc/stream-info.component.js`) for YT status, Viewers page platform column/badge, settings → accounts page note pointing at YouTube integration
-- [ ] Platform badge: small YT icon on messages with `platform==="youtube"` (use existing fa/youtube icon set)
-- [ ] Chat Users panel: YouTube chatters listed (platform-tagged) via ActiveUserHandler data from WS-4
-- [ ] Stream info: when YT live, show YT status + concurrent viewers (from `youtube:stream-info-update`) beside Twitch info
-- [ ] Viewers page: platform column/badge, filter by platform
-- [ ] Error surfacing: quota/limit errors → toast + notification entry, not silent
-- [ ] Copy pass: integration description strings mention quota + both-account setup
+- [x] Platform badge: small YT icon on messages with `platform==="youtube"` (use existing fa/youtube icon set)
+- [x] Chat Users panel: YouTube chatters listed (platform-tagged) via ActiveUserHandler data from WS-4
+- [x] Stream info: when YT live, show YT status + concurrent viewers (from `youtube:stream-info-update`) beside Twitch info
+- [x] Viewers page: platform column/badge, filter by platform
+- [x] Error surfacing: quota/limit errors → toast + notification entry, not silent
+- [x] Copy pass: integration description strings mention quota + both-account setup
 
 ### Acceptance
 - [ ] Manual eyeball pass on merged feed with both streams live; no console errors; platform badges correct after relay traffic
+
+### WS-10 completion notes (for WS-11 / API owner)
+- **Platform badge (`chat-message.js`):** a small `fab fa-youtube` icon renders next to the username when `message.platform === "youtube"` (new `.platform-badge` class in `_chat.scss`). Menu gating was already done by WS-8 — the action list was NOT reworked.
+- **Chat Users panel:** verified wiring — YT chatters are registered by `ActiveUserHandler.addYouTubeActiveUser` (WS-4) with roles `broadcaster`/`mod`/`sub` (same names as Twitch), so they land in the existing Broadcaster/Moderators/Viewers categories; the WS-9 "Members" category is fed by the roster. No additive change was needed in `chat-user-category.js` or `_chat-messages.html` (both WS-9-owned) — REPORTED, not edited.
+- **Stream info (`stream-info.component.js`):** subscribes to `youtube:stream-info-update` (WS-2 payload) and shows a YouTube icon + concurrent viewers beside the Twitch info when `live` is true.
+- **Viewers page:** added a PLATFORM column (YouTube/Twitch icon badge from `FrontendViewer.platform`) + a platform filter dropdown. The filter is applied **client-side to the fetched page** in `viewers.service.js` because the backend `viewer-database:get-viewers-page` handler (WS-3-owned, out of WS-10 scope) has no platform filter — documented limitation: it filters the currently-loaded page, not server-side.
+- **Error surfacing (`youtube-errors.service.js`, new auto-loaded service):** shows a danger toast for YouTube quota/rate-limit errors. The backend currently escalates the daily send-cap via the generic `frontendCommunicator "error"` event (chat-sender.ts), so the service detects YouTube quota/rate-limit messages there; it also handles a dedicated `youtube:error` event for future backend wiring. **Coordination needed:** a persistent notification-center entry requires the backend to call `NotificationManager.addNotification(...)` (the GUI cannot create one directly) — the YouTube module files are WS-owned/off-limits, so this is a WS-11/API-owner follow-up.
+- **Relay visibility (WS-6 exemption):** `chat-relay.ts` does NOT set an outbound marker (WS-6 note). WS-10 tags relayed items in the feed pipeline (`chat-messages.service.js`) by detecting the relay format prefix `[YT] ` (YT→Twitch relayed copies are authored by the Twitch bot and formatted `[YT] DisplayName: message`), setting `data.isRelay = true`. The `hideBotMessages` filter (`app-main.js`) now exempts `isRelay === true` so relayed copies stay visible while Firebot-authored command responses stay hidden. **Fragility note:** detection is by format prefix; a bot-authored message that happens to start with `[YT] ` would be exempted. Recommended follow-up: have `chat-relay.ts` set a real `isRelay` marker on the outbound message (WS-6-owned) and drop the prefix detection.
+- **Copy pass:** `youtube.ts` description (WS-1-owned — edited the description string ONLY) now mentions quota (10,000 units/day) + both-account (streamer + optional bot) setup.
+- **Manual QA checklist for WS-11 (eyeball):**
+  1. **Platform badges:** with both streams live, confirm YT messages in the merged feed show a small red YouTube icon next to the username; Twitch messages show none. Confirm badges persist after relay traffic (relayed copies are Twitch-authored, so no YT badge on them).
+  2. **Chat Users panel:** confirm YT chatters appear (platform-tagged) in the CHAT USERS panel under the appropriate category (Broadcaster/Moderators/Viewers), and that the "Members" category lists roster members present in chat.
+  3. **Stream info:** with YT live, confirm a YouTube icon + concurrent viewer count appears beside the Twitch viewer count in the dashboard header; confirm it disappears when the YT stream ends.
+  4. **Viewers page:** confirm the PLATFORM column shows a YouTube icon for YT viewers and Twitch for Twitch; use the platform filter dropdown and confirm the page filters accordingly (note: filters the loaded page only).
+  5. **Relay visibility:** with `ChatHideBotAccountMessages` ON and relay enabled, confirm YT→Twitch relayed copies (`[YT] Name: message`) stay visible while Firebot-authored command responses from the bot stay hidden.
+  6. **Error toasts:** exhaust the YouTube daily send cap (or simulate) and confirm a danger toast appears (in addition to the standard error modal).
 
 ## WS-11 — Validation, quota audit, documentation
 
