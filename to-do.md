@@ -333,6 +333,7 @@ interface YouTubeIngestMessage {
   - [ ] `$youtubeViewerCount`, `$superChatAmount`, `$superChatCurrency`, `$superChatTier`, `$superChatMessage`, `$memberLevelName`, `$memberMonth`, `$memberIsUpgrade`, `$giftedMembershipCount`
   - [ ] Each with evaluator reading event data + sensible fallback null-when-not-YT-context; handler docs comment
 - [ ] Wire ingest kinds → `EventManager.triggerEvent("youtube", id, payload)` — one place, map in `events/event-handler.ts`
+- [ ] **Currency platform-path (WS-3 coordination, expanded scope):** `src/backend/currency/currency-manager.ts` `adjustCurrencyForViewerById` resolves viewers by username via Twitch-only `getViewerByUsername` — add a platform-aware path so YT ids adjust the `youtube:<id>` record; Twitch behavior unchanged
 - [ ] Activity feed entries render for all events (streamlabs-style icons)
 
 ### Acceptance
