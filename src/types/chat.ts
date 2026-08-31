@@ -74,6 +74,12 @@ export type FirebotChatMessage = {
     timestampDisplay?: string;
     username: string;
     userId: string;
+    /**
+     * The platform the message originated from. Absent/null = "twitch" (legacy behavior).
+     * `userId` always carries the RAW platform id (e.g. Twurple id, or YouTube channel id);
+     * scoping to "<platform>:<id>" happens only inside the viewer DB layers.
+     */
+    platform?: "twitch" | "youtube";
     userDisplayName?: string;
     profilePicUrl?: string;
     pronouns?: string;
