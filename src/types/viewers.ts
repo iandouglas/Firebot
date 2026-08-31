@@ -1,5 +1,10 @@
 export interface FirebotViewer {
     _id: string;
+    /**
+     * Which platform the viewer record belongs to. Absent on records created before
+     * the "<platform>:<user_id>" re-key; the viewer database stamps these on startup.
+     */
+    platform?: "twitch" | "youtube";
     username: string;
     displayName: string;
     profilePicUrl: string;
