@@ -379,7 +379,7 @@ class YouTubeApiClient {
         liveChatId: string,
         channelId: string,
         ban: { type: YouTubeBanType; durationSecs?: number }
-    ): Promise<void> {
+    ): Promise<string | null> {
         const snippet: Record<string, unknown> = {
             liveChatId,
             type: ban.type,
@@ -393,10 +393,14 @@ class YouTubeApiClient {
             snippet.banDurationSeconds = Math.min(Math.max(Math.round(ban.durationSecs), 30), 86399);
         }
 
-        await this._request<unknown>(account, "POST", "/liveChatBans", {
+        const response = await this._request<{ id?: string }>(account, "POST", "/liveChatBans", {
             query: { part: "snippet" },
             body: { snippet }
         });
+
+        // The created liveChatBan resource carries the id needed to lift the
+        // ban later (the API has no "unban by channel" endpoint).
+        return response?.id ?? null;
     }
 
     async unbanUser(account: YouTubeAccountType, bannedChatId: string): Promise<void> {

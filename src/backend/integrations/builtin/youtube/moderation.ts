@@ -38,6 +38,8 @@ export interface YouTubeModerationResult {
 export class YouTubeModeration {
     private _liveChatId: string | null = null;
     private _apiClient: Pick<typeof youTubeApiClient, "deleteChatMessage" | "banUser" | "unbanUser">;
+    /** Ban-resource ids captured at ban/timeout time, keyed by channel id. */
+    private _banIds = new Map<string, string>();
 
     constructor() {
         this._apiClient = youTubeApiClient;
@@ -57,6 +59,9 @@ export class YouTubeModeration {
                 logger.debug("YouTube stream offline; moderation disabled until the next live broadcast.");
             }
             this._liveChatId = null;
+            // Ban resources are tied to the live chat; drop stale ids so a later
+            // broadcast can't lift a ban from a previous one.
+            this._banIds.clear();
         });
 
         // Single owner of these frontend channels (WS-8).
@@ -129,10 +134,13 @@ export class YouTubeModeration {
         }
         const clamped = Math.min(Math.max(Math.round(seconds), MIN_TIMEOUT_SECONDS), MAX_TIMEOUT_SECONDS);
         try {
-            await this._apiClient.banUser("streamer", liveChatId, channelId, {
+            const banId = await this._apiClient.banUser("streamer", liveChatId, channelId, {
                 type: "temporary",
                 durationSecs: clamped
             });
+            if (banId != null) {
+                this._banIds.set(channelId, banId);
+            }
             logger.debug(`YouTube user ${channelId} timed out for ${clamped}s.`);
             return { success: true };
         } catch (error) {
@@ -150,7 +158,10 @@ export class YouTubeModeration {
             return { success: false, error: "Missing channel id." };
         }
         try {
-            await this._apiClient.banUser("streamer", liveChatId, channelId, { type: "permanent" });
+            const banId = await this._apiClient.banUser("streamer", liveChatId, channelId, { type: "permanent" });
+            if (banId != null) {
+                this._banIds.set(channelId, banId);
+            }
             logger.debug(`YouTube user ${channelId} banned.`);
             return { success: true };
         } catch (error) {
@@ -161,13 +172,11 @@ export class YouTubeModeration {
     /**
      * Lift a ban/timeout for a user.
      *
-     * NOTE (coordination): the foundation api-client's `unbanUser(account,
-     * bannedChatId)` deletes a `liveChatBans` resource by its ban-resource id,
-     * not by channel id. The YouTube API has no "unban by channel" endpoint, so
-     * a fully correct unban needs the ban-resource id captured at ban time (the
-     * client's `banUser` currently returns void). Until the api-client exposes
-     * that, this passes the channel id through as the resource id — see the
-     * WS-8 report for the follow-up.
+     * The YouTube API has no "unban by channel" endpoint — a ban is lifted by
+     * deleting the `liveChatBans` resource created at ban time. We capture that
+     * resource id when banning/timeouting (see `banUser`/`timeoutUser`) and use
+     * it here. If the id isn't known (e.g. the ban predates this session), we
+     * fall back to passing the channel id as a best-effort and warn.
      */
     async unbanUser(channelId: string): Promise<YouTubeModerationResult> {
         const liveChatId = this._requireLiveChat();
@@ -177,8 +186,13 @@ export class YouTubeModeration {
         if (channelId == null || channelId === "") {
             return { success: false, error: "Missing channel id." };
         }
+        const banId = this._banIds.get(channelId);
+        if (banId == null) {
+            logger.warn(`No ban-resource id cached for ${channelId}; attempting best-effort unban by channel id.`);
+        }
         try {
-            await this._apiClient.unbanUser("streamer", channelId);
+            await this._apiClient.unbanUser("streamer", banId ?? channelId);
+            this._banIds.delete(channelId);
             logger.debug(`YouTube user ${channelId} unbanned.`);
             return { success: true };
         } catch (error) {

@@ -203,6 +203,31 @@ describe("YouTube moderation", () => {
             expect(mockUnbanUser).toHaveBeenCalledWith("streamer", CHANNEL_ID);
         });
 
+        it("uses the ban-resource id captured at ban time to lift the ban", async () => {
+            youtubeChatEvents.emit("stream-online", VIDEO_ID, LIVE_CHAT_ID);
+            mockBanUser.mockResolvedValue("banResourceId123");
+            await moderation.banUser(CHANNEL_ID);
+
+            const result = await moderation.unbanUser(CHANNEL_ID);
+
+            expect(result.success).toBe(true);
+            expect(mockUnbanUser).toHaveBeenCalledWith("streamer", "banResourceId123");
+        });
+
+        it("falls back to the channel id when no ban-resource id is cached", async () => {
+            youtubeChatEvents.emit("stream-online", VIDEO_ID, LIVE_CHAT_ID);
+            mockBanUser.mockResolvedValue("banResourceId123");
+            await moderation.banUser(CHANNEL_ID);
+            // A new broadcast clears the cached ban ids.
+            youtubeChatEvents.emit("stream-offline");
+            youtubeChatEvents.emit("stream-online", VIDEO_ID, LIVE_CHAT_ID);
+
+            const result = await moderation.unbanUser(CHANNEL_ID);
+
+            expect(result.success).toBe(true);
+            expect(mockUnbanUser).toHaveBeenCalledWith("streamer", CHANNEL_ID);
+        });
+
         it("skips when not live", async () => {
             const result = await moderation.unbanUser(CHANNEL_ID);
 
