@@ -10,6 +10,7 @@ import { AccountAccess } from "../../common/account-access";
 import { CommandManager } from "./command-manager";
 import { RestrictionsManager } from "../../restrictions/restriction-manager";
 import { SettingsManager } from "../../common/settings-manager";
+import { platformDispatch } from "../platform-dispatch";
 import { TwitchApi } from "../../streaming-platforms/twitch/api";
 import commandCooldownManager from "./command-cooldown-manager";
 import commandRunner from "./command-runner";
@@ -147,12 +148,17 @@ class CommandHandler {
                         : DEFAULT_RESTRICTION_MESSAGE;
 
                     if (sendFailureMessage === true) {
-                        await TwitchApi.chat.sendChatMessage(
+                        // Command responses go to both platforms (locked decision D7);
+                        // Twitch keeps its bot-voice + send-as-reply behavior.
+                        await platformDispatch.sendChatMessage(
                             restrictionMessage
                                 .replaceAll("{user}", commandSender)
                                 .replaceAll("{reason}", restrictionResult.failureReason),
-                            restrictionData.sendAsReply === true ? firebotChatMessage.id : null,
-                            true
+                            {
+                                destination: "both",
+                                accountType: "Bot",
+                                replyToMessageId: restrictionData.sendAsReply === true ? firebotChatMessage.id : null
+                            }
                         );
                     }
                 }
@@ -255,7 +261,10 @@ class CommandHandler {
         }
 
         if (userCmd.isInvalidSubcommandTrigger === true) {
-            await TwitchApi.chat.sendChatMessage(`Invalid Command: unknown arg used.`, null, true);
+            await platformDispatch.sendChatMessage(`Invalid Command: unknown arg used.`, {
+                destination: "both",
+                accountType: "Bot"
+            });
             return result;
         }
 
