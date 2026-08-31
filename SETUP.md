@@ -62,15 +62,20 @@ quota-increase request in one place.
 
 ## 2. Firebot `secrets.json`
 
-Firebot validates a `secrets.json` in the repo root at startup (`src/backend/secrets-manager.ts`)
-and refuses to run if required keys are missing.
+Firebot loads a `secrets.json` **at `src/secrets.json`** (`src/backend/secrets-manager.ts` does
+`require("../secrets.json")`, which resolves one folder up from the backend, i.e. `src/`).
+It refuses to run if required keys are missing. The template lives at
+**`src/secrets.template.json`** (it already includes the `googleClientId` / `googleClientSecret`
+keys).
 
-- [ ] If `secrets.json` does **not** exist in the repo root yet, create it from the template:
+- [ ] If `src/secrets.json` does **not** exist yet, create it from the template by running
+  this from the repo root (`/Users/id/src/public/Firebot`):
   ```sh
-  cp secrets.template.json secrets.json
+  cp src/secrets.template.json src/secrets.json
   ```
-  (Run this in `/Users/id/src/public/Firebot` — the file is gitignored so your secrets won't be committed.)
-- [ ] Add the two Google keys (and see the note below about the other required keys):
+  (`secrets.json` is gitignored, so your secrets won't be committed. Do **not** create it at
+  the repo root or in `src/backend/` — only `src/secrets.json` is read.)
+- [ ] Fill in the two Google keys (and see the note below about the other required keys):
   ```json
   {
       "googleClientId": "PASTE-CLIENT-ID-HERE",
@@ -79,9 +84,8 @@ and refuses to run if required keys are missing.
       "...": "other existing keys must remain / be filled — see note"
   }
   ```
-  (Exact key names will be finalized in the code as `googleClientId` / `googleClientSecret`
-  unless the build process says otherwise — they will be added to
-  `src/backend/secrets-manager.ts` as part of the implementation.)
+  (Key names are `googleClientId` / `googleClientSecret` — already defined in
+  `src/backend/secrets-manager.ts` and present in `src/secrets.template.json`.)
 
 > ⚠️ **Note on the other secret keys:** building/running Firebot from this fork also
 > requires Firebot's own keys (`twitchClientId`, `tipeeeStream*`, `streamLabs*`,
