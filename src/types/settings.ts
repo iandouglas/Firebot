@@ -104,6 +104,7 @@ export type FirebotSettingsTypes = {
     }>;
     RunCustomScripts: boolean;
     SeenAdvancedCommandModePopup: boolean;
+    SendDashboardMessagesToBothPlatforms: boolean;
     ShowAdBreakIndicator: boolean;
     ShowActivityFeed: boolean;
     ShowActivityFeedEventsInChat: boolean;

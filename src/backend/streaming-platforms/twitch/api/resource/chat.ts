@@ -18,6 +18,8 @@ import type { TwitchApi } from "../";
 import { ApiResourceBase } from "./api-resource-base";
 import { TwitchSlashCommandHandler } from "../../chat/twitch-slash-command-handler";
 import { FrontendChatManager } from "../../../../chat/frontend-chat-manager";
+import { platformDispatch } from "../../../../chat/platform-dispatch";
+import { SettingsManager } from "../../../../common/settings-manager";
 import frontendCommunicator from '../../../../common/frontend-communicator';
 
 interface ResultWithError<TResult, TError> {
@@ -62,10 +64,20 @@ export class TwitchChatApi extends ApiResourceBase {
 
         this._slashCommandHandler = new TwitchSlashCommandHandler(apiBase);
 
+        // Single owner of the "chat:send-chat-message" event (WS-5 constraint):
+        // this listener delegates to platform-dispatch so dashboard compose
+        // messages can fan out to YouTube too. The YouTube module never
+        // subscribes to this event.
         frontendCommunicator.onAsync("chat:send-chat-message", async (sendData: ChatMessageRequest) => {
             const { message, accountType, replyToMessageId } = sendData;
 
-            await this.sendChatMessage(message, replyToMessageId, accountType.toLowerCase() === "bot");
+            const sendToBothPlatforms = SettingsManager.getSetting("SendDashboardMessagesToBothPlatforms") !== false;
+
+            await platformDispatch.sendChatMessage(message, {
+                destination: sendToBothPlatforms ? "both" : "twitch",
+                accountType,
+                replyToMessageId
+            });
         });
 
         frontendCommunicator.onAsync("chat:delete-message",

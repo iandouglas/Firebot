@@ -121,6 +121,7 @@ const FirebotSettingsDefaults: FirebotSettingsTypes = {
     QuickActions: {},
     RunCustomScripts: false,
     SeenAdvancedCommandModePopup: false,
+    SendDashboardMessagesToBothPlatforms: true,
     ShowActivityFeed: true,
     ShowActivityFeedEventsInChat: false,
     ShowAdBreakIndicator: true,

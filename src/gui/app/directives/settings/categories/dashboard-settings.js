@@ -63,6 +63,22 @@
                         />
                     </firebot-setting>
 
+                    <firebot-setting-category
+                        name="Chat Sending"
+                        pad-top="true"
+                    />
+
+                    <firebot-setting
+                        name="Send Dashboard Messages To Both Platforms"
+                        description="When enabled, messages typed into the dashboard chat box also send to YouTube while the YouTube integration is connected and live. The Chat As selector controls which account is used on each platform."
+                    >
+                        <toggle-button
+                            toggle-model="settings.getSetting('SendDashboardMessagesToBothPlatforms')"
+                            on-toggle="settings.saveSetting('SendDashboardMessagesToBothPlatforms', !settings.getSetting('SendDashboardMessagesToBothPlatforms'))"
+                            font-size="40"
+                        />
+                    </firebot-setting>
+
                     <firebot-setting
                         name="Show Activity Feed Events in Chat"
                         description="When enabled, events that are displayed in the Activity Feed will also be displayed as alerts in the chat feed."
