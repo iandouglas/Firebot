@@ -18,6 +18,10 @@ import { startMembersRoster, stopMembersRoster } from "./members-roster";
 // WS-6: cross-platform relay — side-effect import so its settings poller runs
 // for the app's lifetime (self-manages subscribe/unsubscribe).
 import "./chat-relay";
+// WS-8: moderation + stream-control — side-effect imports register the
+// youtube:* frontend handlers and track the live videoId for title updates.
+import "./moderation";
+import "./stream-control";
 // WS-7: registers the "youtube" event source (Events UI), the ingest → event
 // mapping and the YouTube replace variables. Idempotent; see events/index.ts.
 import { registerYouTubeEvents } from "./events";
