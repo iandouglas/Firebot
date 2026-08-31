@@ -265,7 +265,7 @@ class ViewerDatabase extends TypedEmitter<{
 
             try {
                 const { numAffected } = await this._db
-                    .updateAsync({ _id: staleRecord._id }, { $set: { platform: platform as ViewerPlatform } });
+                    .updateAsync({ _id: staleRecord._id }, { $set: { platform } });
                 if (numAffected > 0) {
                     stampedCount += 1;
                 }

@@ -52,7 +52,7 @@ describe("viewer-identity", () => {
             [undefined, ""],
             ["youtube", null]
         ])("throws for platform %p and raw id %p", (platform, rawId) => {
-            expect(() => scopeViewerId(platform as never, rawId as string)).toThrow();
+            expect(() => scopeViewerId(platform as never, rawId)).toThrow();
         });
 
         it("refuses to double-scope an already scoped id", () => {

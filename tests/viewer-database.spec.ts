@@ -239,7 +239,7 @@ describe("viewer-database re-key (WS-3)", () => {
                 platform: "youtube",
                 twitch: false
             });
-            await expect(getStoredRecord(`youtube:${YOUTUBE_CHANNEL_ID}`)).not.toBeNull();
+            expect(await getStoredRecord(`youtube:${YOUTUBE_CHANNEL_ID}`)).not.toBeNull();
         });
     });
 
