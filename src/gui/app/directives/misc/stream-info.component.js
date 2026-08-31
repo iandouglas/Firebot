@@ -23,8 +23,14 @@
 
                     <ad-break-indicator ng-if="settings.getSetting('ShowAdBreakIndicator') && abs.showAdBreakTimer"></ad-break-service>
                 </div>
+                <div ng-if="youtubeStreamInfo.live" class="stream-info-stats-wrapper" style="margin-left:10px">
+                    <div class="stream-info-stat" ng-show="settings.getSetting('ShowViewerCountStat')">
+                        <i class="fab fa-youtube" style="margin-right: 5px; font-size: 12px; color: #ff0000;" />
+                        <span>{{youtubeStreamInfo.concurrentViewers}}</span>
+                    </div>
+                </div>
             `,
-            controller: function($scope, streamInfoService, settingsService, hypeTrainService, adBreakService, $interval) {
+            controller: function($scope, streamInfoService, settingsService, hypeTrainService, adBreakService, $interval, backendCommunicator) {
                 const $ctrl = this;
 
                 $scope.sis = streamInfoService;
@@ -32,6 +38,27 @@
                 $scope.abs = adBreakService;
 
                 $scope.settings = settingsService;
+
+                // YouTube live status + concurrent viewers, driven by the
+                // "youtube:stream-info-update" payload (WS-2).
+                $scope.youtubeStreamInfo = {
+                    connected: false,
+                    live: false,
+                    preLive: false,
+                    concurrentViewers: null,
+                    startedAt: null
+                };
+
+                backendCommunicator.on("youtube:stream-info-update", (info) => {
+                    if (info == null) {
+                        return;
+                    }
+                    $scope.youtubeStreamInfo.connected = info.connected === true;
+                    $scope.youtubeStreamInfo.live = info.live === true;
+                    $scope.youtubeStreamInfo.preLive = info.preLive === true;
+                    $scope.youtubeStreamInfo.concurrentViewers = info.concurrentViewers;
+                    $scope.youtubeStreamInfo.startedAt = info.startedAt;
+                });
 
                 let totalSeconds = 0;
                 $scope.sessionTimeDisplay = "00:00:00";
