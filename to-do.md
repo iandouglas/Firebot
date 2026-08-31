@@ -170,28 +170,37 @@ interface YouTubeIngestMessage {
 - **Contract out:** everything in the Contracts section; `secrets.googleClientId/googleClientSecret` read (NOT added to `expectedKeys` — missing keys must only *disable* the integration with a startup warning, never crash boot)
 
 ### Tasks
-- [ ] Add `googleClientId`/`googleClientSecret` to `FirebotSecrets` interface (optional) + `secrets.template.json`
-- [ ] Write `contracts.ts` with the types above + `YouTubeApiError` taxonomy
-- [ ] Loader line: register `youtube/youtube` in `builtin-integration-loader.js`
-- [ ] Integration definition: `id:"youtube", name:"YouTube", linkType:"auth", connectionToggle:true, configurable:true, authProviderDetails → streamer provider`
-- [ ] Auth providers (mirroring `twitch-auth.ts` shape, but `type:"code"` like Streamlabs):
-  - [ ] streamer: scopes `youtube.force-ssl` + `youtube.channel-memberships.creator`; `authorizeHost:"https://accounts.google.com"`, `authorizePath:"/o/oauth2/v2/auth?access_type=offline&prompt=consent"`, token `type:"code"`, `tokenHost:"https://oauth2.googleapis.com"`, `tokenPath:"/token"`, `redirectUriHost:"localhost"`, `autoRefreshToken: true`
-  - [ ] bot: scope `youtube.force-ssl` only; registered directly via `authManager.registerAuthProvider` in `init()` (NOT as `definition.authProviderDetails` — avoids auto-link confusion in `integration-manager.js`)
-  - [ ] Verify `client-oauth2` refresh works against Google (no `grant_type` surprises; scopes param tolerated)
-- [ ] `auth-success` handling:
-  - [ ] streamer → default integration-manager flow (link) + `link(linkData)` implementation: `getMyChannel("streamer")`, cache channel info, emit `settings-update`
-  - [ ] bot → integration-module-local listener: `authManager.on("auth-success", providerId === "youtube:bot-account")` → store `botAuth`+`botChannel` via `settings-update` mechanism
-- [ ] Bot link/unlink UI: custom setting type `"youtube-bot-auth"` rendered in integration settings modal — Link button → `shell.openExternal("http://localhost:{WebServerPort}/api/v1/auth?providerId=youtube:bot-account")` (mirror `startIntegrationLink`), status display (avatar+channel title), Unlink button
-- [ ] `account-store.ts`: typed accessors `getStreamerAccount()/getBotAccount()` returning `{channel, auth}` or null; token-expiry checks
-- [ ] `connect(integrationData)`: refresh-both-tokens, kick live monitor (WS-2 hook), set `connected=true` → emits framework `connected` event so Connection Panel tile works
-- [ ] `disconnect()`: stop monitor + chat (emitter hook points), `connected=false`
-- [ ] `unlink()`: clear all settings/auth (both accounts)
-- [ ] Graceful degradation: missing secrets → log + define but don't crash; definition exposes `linked:false`
+- [x] Add `googleClientId`/`googleClientSecret` to `FirebotSecrets` interface (optional) + `secrets.template.json`
+- [x] Write `contracts.ts` with the types above + `YouTubeApiError` taxonomy
+- [x] Loader line: register `youtube/youtube` in `builtin-integration-loader.js`
+- [x] Integration definition: `id:"youtube", name:"YouTube", linkType:"auth", connectionToggle:true, configurable:true, authProviderDetails → streamer provider`
+- [x] Auth providers (mirroring `twitch-auth.ts` shape, but `type:"code"` like Streamlabs):
+  - [x] streamer: scopes `youtube.force-ssl` + `youtube.channel-memberships.creator`; `authorizeHost:"https://accounts.google.com"`, `authorizePath:"/o/oauth2/v2/auth?access_type=offline&prompt=consent"`, token `type:"code"`, `tokenHost:"https://oauth2.googleapis.com"`, `tokenPath:"/token"`, `redirectUriHost:"localhost"`, `autoRefreshToken: true`
+  - [x] bot: scope `youtube.force-ssl` only; registered directly via `authManager.registerAuthProvider` in `init()` (NOT as `definition.authProviderDetails` — avoids auto-link confusion in `integration-manager.js`)
+  - [!] Verify `client-oauth2` refresh works against Google (no `grant_type` surprises; scopes param tolerated) — blocked on WS-0: user's `secrets.json` GCP creds not installed yet; refresh flow is covered by unit tests against the client-oauth2 contract (Basic-auth header + `grant_type=refresh_token`) and needs one live re-approval test
+- [x] `auth-success` handling:
+  - [x] streamer → default integration-manager flow (link) + `link(linkData)` implementation: `getMyChannel("streamer")`, cache channel info, emit `settings-update`
+  - [x] bot → integration-module-local listener: `authManager.on("auth-success", providerId === "youtube:bot-account")` → store `botAuth`+`botChannel` via `settings-update` mechanism
+- [x] Bot link/unlink UI: custom setting type `"youtube-bot-auth"` rendered in integration settings modal — Link button → `shell.openExternal("http://localhost:{WebServerPort}/api/v1/auth?providerId=youtube:bot-account")` (mirror `startIntegrationLink`), status display (avatar+channel title), Unlink button
+- [x] `account-store.ts`: typed accessors `getStreamerAccount()/getBotAccount()` returning `{channel, auth}` or null; token-expiry checks
+- [x] `connect(integrationData)`: refresh-both-tokens, kick live monitor (WS-2 hook), set `connected=true` → emits framework `connected` event so Connection Panel tile works
+- [x] `disconnect()`: stop monitor + chat (emitter hook points), `connected=false`
+- [x] `unlink()`: clear all settings/auth (both accounts)
+- [x] Graceful degradation: missing secrets → log + define but don't crash; definition exposes `linked:false`
 
 ### Acceptance
-- [ ] `npm run lint` + `npx tsc --noEmit` clean
-- [ ] App boots with integration visible under Settings → Integrations, Link opens Google consent, both accounts can link, Connection Panel shows YouTube tile (disconnected state)
-- [ ] Kill + re-approval: weekly-expired tokens are refreshed transparently on connect
+- [x] `npm run lint` + `npx tsc --noEmit` clean
+- [ ] App boots with integration visible under Settings → Integrations, Link opens Google consent, both accounts can link, Connection Panel shows YouTube tile (disconnected state) — blocked on WS-0 secrets
+- [ ] Kill + re-approval: weekly-expired tokens are refreshed transparently on connect — blocked on WS-0 secrets
+
+### WS-1 notes (discovered during implementation)
+- Test infra was unrunnable before this WS: `jest.config.ts` needs `ts-node`, jest needed `ts-jest` (transform) and `@types/jest` — all three added as devDependencies. Any agent running jest must run/npm-install once more. `tests/mocks/electron-mock.ts` (referenced by `jest.config.ts` moduleNameMapper) was created as a shared stub — extend it freely.
+- Reusable test fixtures live in `src/backend/integrations/builtin/youtube/testing/google-api-fixtures.ts` (fake inline tokens/responses). NOTE: any `.ts` file directly under `__tests__/` is executed as a test suite by default testMatch — keep helpers/fixtures in `testing/`.
+- `integration-manager`'s `settings-update` listener sets `definition.linked = true` in memory for ANY settings persistence — so a bot-only link leaves the tile looking linked until restart (DB `/linked` flag is only written by `linkIntegration`). Also on reboot, a settings blob without the `linked` key reads back as linked (`!== false`). connect() guards this: no streamer token → emits `disconnected` and never connects.
+- Bot unlink persists `botAuth:null`/`botChannel:null` via settings-update; bot link/unlink also push `youtube:bot-auth-update` ({linked, channel}) to the frontend for the open modal.
+- `client-oauth2` token refresh sends Basic auth + `grant_type=refresh_token` (no scope param sent — auth-manager's `scopes` param is ignored by the lib's refresh body). Google accepts Basic-auth token refresh; verify on first live connect.
+- Auth tokens (botAuth inside settings) do reach the frontend renderer inside `getAllIntegrationDefinitions.settings` — same exposure as other integrations (e.g. Streamlabs socketToken); acceptable for now, worth revisiting if tokens should move out of settings.
+- Settings keys pre-registered: `relayEnabled:false`, `relayMaxPerMinute:12`, `botAuth`, `botChannel`, `streamerChannel`, `linked` (WS-6 consumes the relay pair; WS-2/4/5/9 should read tokens via account-store, not settings).
 
 ## WS-2 — Live broadcast monitor + stream online/offline events
 
@@ -237,9 +246,10 @@ interface YouTubeIngestMessage {
 - [x] Type check green across repo (`tsc --noEmit` exit 0; no consumer needed changes)
 
 ### WS-3 coordination notes (for WS-4/WS-7/WS-10/WS-11)
+- **Re-key regressions FIXED in follow-up `1ad2aeab7`** (user-approved scope extension): `setChatViewerOnline` now updates via the scoped record `_id`, and the update-role effect unscopes `viewer._id` for custom-role lists; regression-tested in `tests/viewer-online-status-manager.spec.ts`.
 - **Do NOT build scoped ids by hand.** Use `viewer-identity` helpers. YouTube code: `viewerDatabase.upsertYouTubeViewer(channelId, {...})` / `getViewerByScopedId("youtube", channelId)`; NEVER `getViewerByUsername` (Twitch-only, filters `twitch: true`).
 - **DB records carry scoped `_id`** (`twitch:<id>` / `youtube:<id>`); all user-facing/event/API surfaces keep RAW ids — outbound records from `createNewViewer`, viewers page, `getAllUsernamesWithIds`, frontend sends, and event metadata are unscoped automatically; `updateViewer`/`removeViewer`/`incrementDbField`/`updateDbCell` accept raw OR scoped ids.
-- **Out-of-write-set follow-ups needed (found in audit, NOT edited here):**
+- **Out-of-write-set follow-ups needed (found in audit; items 1 + 2 fixed in `1ad2aeab7`, see note above):**
     1. `src/backend/viewers/viewer-online-status-manager.ts` ~L109 `setChatViewerOnline`: `getViewerDb().updateAsync({ _id: viewer.id }, ...)` uses a RAW Twitch id from chat packets → misses the scoped record. Fix: fetch via `viewerDatabase.getViewerById(viewer.id)` and update by `viewer._id` (like `setChatViewerOffline` already does), or wrap with `scopeViewerId("twitch", viewer.id)`.
     2. `src/backend/effects/builtin/update-role.ts` ~L170: `user.id = viewer._id` (now scoped) feeds custom-role user lists keyed by RAW Twitch ids → membership mismatch. Fix: `user.id = unscopeViewerId(viewer._id)`.
     3. `src/backend/currency/currency-manager.ts` `adjustCurrencyForViewerById` re-resolves by USERNAME via Twitch-only `getViewerByUsername` → YouTube currency adjustments return false even when the id lookup succeeds (currency-manager is not WS-3-owned; WS-7 needs a platform-aware path).
