@@ -212,27 +212,39 @@ interface YouTubeIngestMessage {
 - [ ] With user's real channel: going live in YT Studio/OBS flips integration connected + fires both events (verify via Events test-fire + activity feed entry from WS-7 definitions)
 - [ ] Ending stream stops the chat reader (WS-4 hook) cleanly, no loop spam
 
-## WS-3 — Viewer identity + DB re-key (twitch:<id>, youtube:<id>)
+## WS-3 — Viewer identity + DB re-key (twitch:<id>, youtube:<id>) **[x] DONE**
 
 - **Depends on:** nothing
 - **Owns:** `src/backend/viewers/viewer-identity.ts` (new), `src/backend/viewers/viewer-database.ts`, `src/backend/database/currencyDatabase.js`, `src/types/chat.ts` (add `platform?` field ONLY — coordinate: WS-4 relies on this), `src/backend/roles/*.ts` **only if** lookups need scoping wrappers, `src/backend/viewers` type files as needed
-- **Contract out:** `scopeViewerId(platform, rawId)`, `parseViewerId()`; DB API additions: `getViewerByScopedId`, `createOrUpdateYoutubeViewer(channelId, displayName, avatar)`, and scoping inside existing `create/lookup/increment` paths
+- **Contract out (exact signatures implemented):**
+    - `viewer-identity.ts`: `VIEWER_PLATFORMS = ["twitch","youtube"]`, `type ViewerPlatform`, `isViewerPlatform(value): value is ViewerPlatform`, `scopeViewerId(platform, rawId): string` (throws on unknown platform / empty id / already-scoped id), `parseViewerId(scopedId): { platform, rawId }` (throws on malformed), `safeParseViewerId(scopedId)` (same, returns null), `rawIdFromPlatform(platform, scopedId): string \| null`, `unscopeViewerId(scopedId): string` (pass-through), `inferViewerPlatformFromId(id): ViewerPlatform`
+    - `viewer-database.ts` (returns "viewer \| null" for misses): `getViewerById(id)` (raw Twitch id **or** already-scoped id), `getViewerByUserId(legacyTwitchId)` (alias), `getViewerByScopedId(platform, rawId)`, `upsertYouTubeViewer(channelId, { displayName, username?, avatarUrl? }): Promise<FirebotViewer>` (returns stored record with scoped `_id = "youtube:<channelId>"`), `createOrUpdateYoutubeViewer(channelId, displayName, avatarUrl?)` (positional alias), `createNewViewer(viewer: NewFirebotViewer)` (legacy Twitch path; honors optional `NewFirebotViewer.platform`, defaults twitch; returns/sends RAW-id record for legacy compat)
 
 ### Tasks
-- [ ] `viewer-identity.ts`: `VIEWER_PLATFORMS = ["twitch","youtube"]`, `scopeViewerId(platform, rawId) = platform + ":" + rawId`, `parseViewerId(scopedId)`, `rawIdFromPlatform(platform, scopedId)` helpers + unit tests
-- [ ] `viewer-database.ts`: funnel ALL `_id` construction through scoping helper; add `platform: "twitch"|"youtube"` field to `FirebotViewer` + `NewFirebotViewer` types; audit `getViewerByUsername` → mark as `@deprecated for Twitch-only use` with doc comment enforcing WS invariant #1
-- [ ] New lookups: `getViewerByScopedId(platform, id)`; keep `getViewerByUserId(legacyTwitchId)` delegating (so existing Twitch call sites need zero edits)
-- [ ] YT upsert path: `upsertYouTubeViewer(channelId, {displayName, avatar})` — create-if-missing, update name/avatar otherwise (called by WS-4)
-- [ ] Currency DB: same scoping at boundaries (`_id` → scoped; API surface keeps raw+platform params). Guard: Twitch currency increments unchanged in behavior
-- [ ] Defensive sweep on startup (cheap): if any viewer record lacks `platform`, stamp by `_id` regex (`^UC[\w-]{20,}$` → youtube, else twitch) — fresh-install safety net
-- [ ] Audit sweep: `grep` all `_id:` / `userId` DB touchpoints; confirm none write raw IDs directly
-- [ ] Event/activity metadata untouched (raw IDs) — verify by reading `event-manager.ts` consumers + `command-runner.ts`
-- [ ] FirebotChatMessage type: add `platform?: "twitch" | "youtube"` (default absent = twitch)
+- [x] `viewer-identity.ts`: `VIEWER_PLATFORMS`, `scopeViewerId`, `parseViewerId`, `rawIdFromPlatform`, plus non-throwing `safeParseViewerId`/`unscopeViewerId` and `inferViewerPlatformFromId` helpers + unit tests (42 tests)
+- [x] `viewer-database.ts`: funnel ALL `_id` construction through scoping helper; `platform` field added to `FirebotViewer` + `NewFirebotViewer`; `getViewerByUsername` doc-commented as **Twitch-only — never call from YouTube code paths** (WS invariant #1)
+- [x] New lookups: `getViewerByScopedId(platform, id)`; `getViewerByUserId(legacyTwitchId)` alias; `getViewerById` still accepts raw Twitch ids so existing call sites need zero edits (already-scoped ids pass through)
+- [x] YT upsert path: `upsertYouTubeViewer(channelId, {displayName, username?, avatarUrl?})` — create-if-missing (platform:"youtube", twitch:false), update name/avatar otherwise, returns stored record (called by WS-4)
+- [x] Currency DB: scoping at the `currencyDatabase.js` facade boundaries (`adjustCurrencyForUserById`, `getUserCurrencies`, `getUserCurrencyRank` scope raw ids, default twitch, optional trailing `platform` param); manager internals all use record `_id`s (audit-verified); Twitch increments unchanged (regression-tested)
+- [x] Defensive sweep on startup: `applyLegacyPlatformSweep()` called from `connectViewerDatabase()` — records missing `platform` stamped by `_id` shape (`^UC[\w-]{20,}$` → youtube, else twitch); logs count at debug; unit-tested
+- [x] Audit sweep: all `_id:`/`userId` DB touchpoints verified — every write/lookup flows through scoping or record `_id`s (3 out-of-write-set sites need follow-up, see notes)
+- [x] Event/activity metadata untouched (raw IDs) — verified `event-manager.ts`/`command-runner.ts`/`events-router` consumers carry chat-message raw userIds; rank event inside viewer-database emits raw id
+- [x] FirebotChatMessage: `platform?: "twitch" \| "youtube"` added (default absent = twitch); `userId` stays RAW
 
 ### Acceptance
-- [ ] Unit tests for scoping + upsert; `npm test` green
-- [ ] Fresh profile: Twitch connect → viewers accrue under `twitch:<id>` (verify in `viewers.db` file / a temp debug script)
-- [ ] Type check green across repo (no consumer needed changes)
+- [x] Unit tests for scoping + upsert: 81 WS-3 tests green (viewer-identity 42, viewer-database 29 incl. currency-on-scoped-record + legacy-Twitch-unchanged regression, currencyDatabase 10); full `jest` run: all WS-3 suites green
+- [~] Fresh profile: unit tests verify Twitch creation accrues under `twitch:<id>` (`twitch-calls-unchanged regression` in viewer-database.spec.ts); the literal manual fresh-profile GUI run stays for testing phase
+- [x] Type check green across repo (`tsc --noEmit` exit 0; no consumer needed changes)
+
+### WS-3 coordination notes (for WS-4/WS-7/WS-10/WS-11)
+- **Do NOT build scoped ids by hand.** Use `viewer-identity` helpers. YouTube code: `viewerDatabase.upsertYouTubeViewer(channelId, {...})` / `getViewerByScopedId("youtube", channelId)`; NEVER `getViewerByUsername` (Twitch-only, filters `twitch: true`).
+- **DB records carry scoped `_id`** (`twitch:<id>` / `youtube:<id>`); all user-facing/event/API surfaces keep RAW ids — outbound records from `createNewViewer`, viewers page, `getAllUsernamesWithIds`, frontend sends, and event metadata are unscoped automatically; `updateViewer`/`removeViewer`/`incrementDbField`/`updateDbCell` accept raw OR scoped ids.
+- **Out-of-write-set follow-ups needed (found in audit, NOT edited here):**
+    1. `src/backend/viewers/viewer-online-status-manager.ts` ~L109 `setChatViewerOnline`: `getViewerDb().updateAsync({ _id: viewer.id }, ...)` uses a RAW Twitch id from chat packets → misses the scoped record. Fix: fetch via `viewerDatabase.getViewerById(viewer.id)` and update by `viewer._id` (like `setChatViewerOffline` already does), or wrap with `scopeViewerId("twitch", viewer.id)`.
+    2. `src/backend/effects/builtin/update-role.ts` ~L170: `user.id = viewer._id` (now scoped) feeds custom-role user lists keyed by RAW Twitch ids → membership mismatch. Fix: `user.id = unscopeViewerId(viewer._id)`.
+    3. `src/backend/currency/currency-manager.ts` `adjustCurrencyForViewerById` re-resolves by USERNAME via Twitch-only `getViewerByUsername` → YouTube currency adjustments return false even when the id lookup succeeds (currency-manager is not WS-3-owned; WS-7 needs a platform-aware path).
+- FYI: `viewers-api-controller.ts` JSON dump and `viewer-export-manager.ts` file exports expose scoped `_id`s (DB dumps — untouched, outside write set); GUI viewers page still shows raw ids by design (WS-10 polish if display wanted).
+- Test infra added (WS-3, for everyone): `ts-jest` + `ts-node` + `@types/jest` devDeps; `jest.config.ts` now has a ts-jest transform + an `electron` module mapper (`tests/mocks/electron-mock.ts`, owned/extended by WS-1's agent). Caveat: jest's default `testMatch` treats every file under `__tests__/` as a suite — name fixtures/specs accordingly.
 
 ## WS-4 — YouTube chat ingest (read loop → commands + merged feed + roles)
 
