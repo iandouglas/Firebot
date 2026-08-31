@@ -13,7 +13,8 @@ exports.loadIntegrations = () => {
         'streamloots/streamloots',
         'tipeeestream/tipeeestream',
         'extralife/extralife',
-        'obs/obs-integration'
+        'obs/obs-integration',
+        'youtube/youtube'
     ].forEach((filename) => {
         const definition = require(`./builtin/${filename}.js`);
         integrationManager.registerIntegration(definition, false);
