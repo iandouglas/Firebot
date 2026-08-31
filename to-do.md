@@ -210,17 +210,26 @@ interface YouTubeIngestMessage {
 - **Data out:** `"stream-online" (videoId, liveChatId, concurrentViewers?, startedAt?)`, `"stream-offline"` events; `frontendCommunicator.send("youtube:stream-info-update", {...})` for dashboard display (consumed in WS-10)
 
 ### Tasks
-- [ ] Poll loop (60s, only while integration connected): `listOwnBroadcasts()` → find `lifeCycleStatus === "live"` (accept `testStarting` as *pre-live* with no chat start) → cache `{videoId, liveChatId}`
-- [ ] Edge: multiple broadcasts (`mine=true` returns all) → pick most recent by (`status.recordings`? use `snippet.publishedAt` latest with live status)
-- [ ] Transition live→offline (`lifeCycleStatus complete` OR `liveChatEnded` API error OR `offlineAt` in chat-list response): stop reader, fire `stream-offline`
-- [ ] `videos.list(id, part=liveStreamingDetails,statistics)` piggyback for `concurrentViewers` (1 unit, same 60s tick)
-- [ ] `triggers/stream-events.ts`: fire `EventManager.triggerEvent("youtube", "stream-online"|"stream-offline", {username: channelTitle, userId: channelId, ...})`
-- [ ] Hook points into WS-1: `connect()` starts monitor; disconnect stops
-- [ ] Logging: every transition at info; poll errors at warn with error kind
+- [x] Poll loop (60s, only while integration connected): `listOwnBroadcasts()` → find `lifeCycleStatus === "live"` (accept `testStarting` as *pre-live* with no chat start) → cache `{videoId, liveChatId}`
+- [x] Edge: multiple broadcasts (`mine=true` returns all) → pick most recent by (`status.recordings`? use `snippet.publishedAt` latest with live status) — **NOTE: WS-1 contract doesn't map `publishedAt`; recency key is `actualStartTime` (fallback `scheduledStartTime`)**
+- [x] Transition live→offline (`lifeCycleStatus complete` OR `liveChatEnded` API error OR `offlineAt` in chat-list response): stop reader, fire `stream-offline` — monitor covers `complete` + broadcast-leaving-the-list + superseded; the `chat-ended` API-error leg belongs to WS-4's reader (stub locked below)
+- [x] `videos.list(id, part=liveStreamingDetails,statistics)` piggyback for `concurrentViewers` (1 unit, same 60s tick) → `frontendCommunicator.send("youtube:stream-info-update", {...})` on payload change
+- [x] `triggers/stream-events.ts`: fire `EventManager.triggerEvent("youtube", "stream-online"|"stream-offline", {username: channelTitle, userId: channelId, ...})`
+- [x] Hook points into WS-1: `connect()` starts monitor; disconnect stops
+- [x] Logging: every transition at info; poll errors at warn with error kind
 
 ### Acceptance
-- [ ] With user's real channel: going live in YT Studio/OBS flips integration connected + fires both events (verify via Events test-fire + activity feed entry from WS-7 definitions)
-- [ ] Ending stream stops the chat reader (WS-4 hook) cleanly, no loop spam
+- [ ] With user's real channel: going live in YT Studio/OBS flips integration connected + fires both events (verify via Events test-fire + activity feed entry from WS-7 definitions) — blocked on WS-0 secrets
+- [ ] Ending stream stops the chat reader (WS-4 hook) cleanly, no loop spam — monitor wiring done (stop on every offline transition); full verification pending WS-4
+
+### WS-2 completion notes (for WS-4 / WS-7 / WS-10)
+- **WS-4 HANDOFF — chat-ingest stub signatures (LOCKED):** `startChatIngest(liveChatId: string, videoId: string): void` / `stopChatIngest(): void`. The monitor calls `startChatIngest` once per broadcast going live (liveChatId = broadcast.liveChatId ?? videos.list `chatId` fallback) and `stopChatIngest()` on EVERY offline transition (complete, broadcast superseded, monitor stop). WS-4 keeps the signatures EXACTLY (arity asserted in `__tests__/chat-ingest.spec.ts`; monitor tests mock these functions) and implements the reader per invariants #4/#6 + the doc comment in the stub.
+- Wiring choice: monitor drives the chat reader DIRECTLY via the stub import (not via subscribing to its own youtubeChatEvents) — simpler lifecycle, no listener-order dependence. `youtube.ts` side-effect-imports `./chat-ingest` so WS-4's module-level registration (if any) loads with the integration.
+- Event surface: monitor emits "stream-online" (videoId, liveChatId, concurrentViewers?: number, startedAt?: string) and "stream-offline" on `youtubeChatEvents` (contracts), AND triggers `EventManager.triggerEvent("youtube", "stream-online"|"stream-offline", ...)` with metadata `{username: channelTitle, userId: channelId (raw UC…, invariant #1), userDisplayName: channelTitle, videoId, liveChatId, concurrentViewers, startedAt}` (last four online-only). Missing streamer channel → empty-string user fields (warn); events still fire. WS-7: consume as-is, don't re-emit from `events/`.
+- `frontendCommunicator.send("youtube:stream-info-update", payload)` — shape = `YouTubeStreamInfoUpdate` in live-monitor.ts: `{connected, live, preLive, videoId, title, liveChatId, concurrentViewers: number|null, totalViewCount: number|null, startedAt: string|null}`. Sent on every payload CHANGE (~every tick while live as viewers move; once when settling offline) PLUS one final `connected:false` teardown send when the monitor stops. WS-10 consumes.
+- Cadence/robustness: chained setTimeout (not setInterval) — 60s normal; 5min after 3 consecutive kind:"other"/network failures; back to 60s on next success (info). `auth`/`quota`/`rate-limit` never count toward backoff and never crash the loop. First tick runs immediately on connect. Timers unref'd (never hold the process open). Full test coverage in `__tests__/live-monitor.spec.ts` (18 tests).
+- `disconnect()` intentionally does NOT emit `stream-offline` (the broadcast may still be live): it only stops the monitor and clears state. `unlink()` also stops the monitor.
+- Quota: exactly 1 list unit/min while connected (= 1,440/day max, invariant #3) + piggyback `videos.list` (~1 unit/tick) ONLY while a broadcast is live — pre-live/testStarting ticks skip the details call.
 
 ## WS-3 — Viewer identity + DB re-key (twitch:<id>, youtube:<id>) **[x] DONE**
 
@@ -318,27 +327,45 @@ interface YouTubeIngestMessage {
 - [ ] Two browser sessions (Twitch + YT): messages flow both directions, no loops (watch ≥5 min), emotes stripped on Twitch→YT, `[Twitch]`/`[YT]` prefixes correct
 - [ ] Toggle off mid-stream → relay stops immediately; cap prevents quota spikes (verify counter)
 
-## WS-7 — Monetization events + variables (youtube event source)
+## WS-7 — Monetization events + variables (youtube event source) **[x] DONE (code) — live verification pending WS-0**
 
 - **Depends on:** WS-4 (ingest hands off non-text messages); can build against contracts + fixtures in parallel
-- **Owns:** `src/backend/integrations/builtin/youtube/events/{index.ts, youtube-event-source.ts, events/*.ts}`, `src/backend/integrations/builtin/youtube/variables/{index.ts, *.ts}`
+- **Owns:** `src/backend/integrations/builtin/youtube/events/{index.ts, event-definitions.ts, event-handler.ts}`, `src/backend/integrations/builtin/youtube/variables/{index.ts, *.ts}`
 
 ### Tasks
-- [ ] Register event source `"youtube"` (mirror streamlabs pattern `isIntegration: true`): events with `manualMetadata` for test-firing + `activityFeed.getMessage`:
-  - [ ] `stream-online` / `stream-offline` (metadata from WS-2)
-  - [ ] `chat-message` (YT text messages as event payload — optional but cheap)
-  - [ ] `member-join` (newSponsor), `member-milestone` (memberMonth, memberLevelName, userComment), `gift-membership` (gifter + giftMembershipsCount), `gift-membership-received` (recipient + levelName), `super-chat` / `super-sticker` (amountDisplayString, amountMicros→display, currency, tier, userComment, author channel id), `members-only-mode-started/ended` (cheap, from sponsorOnlyMode types)
-- [ ] Manual metadata: plausible defaults (`username: "MemberMcGee"`, amount `$5.00`, etc.)
-- [ ] Variables registered via `ReplaceVariableManager` (mirror `twitch/variables/index.ts` aggregation; register from this module's init):
-  - [ ] `$youtubeViewerCount`, `$superChatAmount`, `$superChatCurrency`, `$superChatTier`, `$superChatMessage`, `$memberLevelName`, `$memberMonth`, `$memberIsUpgrade`, `$giftedMembershipCount`
-  - [ ] Each with evaluator reading event data + sensible fallback null-when-not-YT-context; handler docs comment
-- [ ] Wire ingest kinds → `EventManager.triggerEvent("youtube", id, payload)` — one place, map in `events/event-handler.ts`
-- [ ] **Currency platform-path (WS-3 coordination, expanded scope):** `src/backend/currency/currency-manager.ts` `adjustCurrencyForViewerById` resolves viewers by username via Twitch-only `getViewerByUsername` — add a platform-aware path so YT ids adjust the `youtube:<id>` record; Twitch behavior unchanged
-- [ ] Activity feed entries render for all events (streamlabs-style icons)
+- [x] Register event source `"youtube"` (mirror streamlabs pattern `isIntegration: true`): events with `manualMetadata` for test-firing + `activityFeed.getMessage`:
+  - [x] `stream-online` / `stream-offline` (metadata from WS-2)
+  - [x] `chat-message` (YT text messages as event payload — optional but cheap)
+  - [x] `member-join` (newSponsor), `member-milestone` (memberMonth, memberLevelName, userComment), `gift-membership` (gifter + giftMembershipsCount), `gift-membership-received` (recipient + levelName), `super-chat` / `super-sticker` (amountDisplayString, amountMicros→display, currency, tier, userComment, author channel id), `members-only-mode-started/ended` (cheap, from sponsorOnlyMode types)
+- [x] Manual metadata: plausible defaults (`username: "MemberMcGee"`, amount `$5.00`, etc.)
+- [x] Variables registered via `ReplaceVariableManager` (mirror `twitch/variables/index.ts` aggregation; register from this module's init):
+  - [x] `$youtubeViewerCount`, `$superChatAmount`, `$superChatCurrency`, `$superChatTier`, `$superChatMessage`, `$memberLevelName`, `$memberMonth`, `$memberIsUpgrade`, `$giftedMembershipCount`
+  - [x] Each with evaluator reading event data + sensible fallback null-when-not-YT-context; handler docs comment
+- [x] Wire ingest kinds → `EventManager.triggerEvent("youtube", id, payload)` — one place, map in `events/event-handler.ts`
+- [x] **Currency platform-path (WS-3 coordination, expanded scope):** `src/backend/currency/currency-manager.ts` `adjustCurrencyForViewerById` resolves viewers by username via Twitch-only `getViewerByUsername` — add a platform-aware path so YT ids adjust the `youtube:<id>` record; Twitch behavior unchanged
+- [x] Activity feed entries render for all events (streamlabs-style icons) — every event except `chat-message` has an activityFeed entry (twitch's chat-message convention is no feed entry; kept for parity)
 
 ### Acceptance
-- [ ] Events UI shows "YouTube" source with all events; Test Fire produces correct activity-feed lines and effect triggers
-- [ ] On a real stream w/ super chat: event fires with correct amount/currency (verify with own $5 super chat — or YT Studio test stream)
+- [~] Events UI shows "YouTube" source with all events; Test Fire produces correct activity-feed lines and effect triggers — code + registration smoke tests in place; manual UI pass pending WS-0 secrets
+- [ ] On a real stream w/ super chat: event fires with correct amount/currency (verify with own $5 super chat — or YT Studio test stream) — pending WS-0 + live channel
+
+### WS-7 notes (for WS-10 / WS-4 / WS-11)
+- **Event id list + payload shapes (coordination contract for WS-10 frontend):** source id `youtube`. All events carry `username` (YT display name — YT has no separate login handle), `userDisplayName` (same value), `userId` (RAW channel id `UC...`, WS invariant #1).
+    - `stream-online`: `username`, `userDisplayName`, `userId`, `videoId`, `liveChatId`, `viewerCount`/`concurrentViewers` (variable accepts both keys; WS-2's monitor sends `concurrentViewers`)
+    - `stream-offline`: user fields only
+    - `chat-message`: `messageId`, `messageText`, `youtubeUserRoles` (`"broadcaster" | "moderator" | "member"` from author flags)
+    - `member-join`: `memberLevelName`
+    - `member-milestone`: `memberLevelName`, `memberMonth`, `memberIsUpgrade` (bool, default false), `memberMessage` (= userComment, "" default)
+    - `gift-membership` (author IS the gifter): `giftCount`, `gifterChannelId` (= author channel id unless the payload disagrees), `gifterDisplayName`, `memberLevelName`
+    - `gift-membership-received` (author IS the recipient): `memberLevelName`, `gifterChannelId`, `gifterDisplayName` (**null when YouTube only provides the gifter channel id** — activity feed falls back to "Someone")
+    - `super-chat` / `super-sticker`: `superChatAmountDisplay` (YouTube's formatted string; derived from `superChatAmountMicros` + `superChatCurrency` when absent), `superChatAmountMicros`, `superChatCurrency`, `superChatTier`, `superChatMessage` (null for stickers / "" for chats when no comment)
+    - `members-only-mode-started` / `members-only-mode-ended`: channel-level user fields only
+- **Ingest hand-off (WS-4):** every `YouTubeIngestMessage` delivered on `youtubeChatEvents` `"chat-message"` is mapped to its event here (table in `event-handler.ts`); the `banned` kind maps to NO event (WS-8 owns moderation). `members-only` mode changes have no ingest kind in `contracts.ts` — WS-4 should call the exported `triggerMembersOnlyMode(started, {channelTitle, channelId})` from `events/event-handler.ts` when it sees `sponsorOnlyModeStartedEvent`/`sponsorOnlyModeEndedEvent` snippet types.
+- **Variables** (`src/backend/integrations/builtin/youtube/variables/`, registered alongside the event source; trigger on their `youtube:*` events + manual): `$youtubeViewerCount` (number, `youtube:stream-online`), `$superChatAmount` (formatted display string), `$superChatCurrency` (ISO code), `$superChatTier` (1–7), `$superChatMessage` ("" fallback) — last four on `youtube:super-chat` + `youtube:super-sticker`; `$memberLevelName` (all member/gift events), `$memberMonth` (`youtube:member-milestone`), `$memberIsUpgrade` (member-join/milestone, bool|null), `$giftedMembershipCount` (`youtube:gift-membership`, 0 fallback). All return null outside their context (documented per file).
+- **Wiring line added to `youtube.ts` (allowed minimal touch, 3 lines total):** the import `import { registerYouTubeEvents } from "./events";` + one call `registerYouTubeEvents();` in `init()` (before WS-2's monitor hook). `registerYouTubeEvents()` is idempotent and registers (1) the event source with `EventManager`, (2) the ingest→event subscription, and (3) all nine variables with `ReplaceVariableManager` — same pattern as Streamlabs' `registerEvents()` in `init()`.
+- **Test-infra note (WS-7):** importing the REAL `event-manager`/`replace-variable-manager` in jest is unbootable (their chains hit the data-access ⇄ logwrapper circular import TDZ + profile-dependent singletons). Suites must `jest.mock` those modules (events/variables suites + `youtube.spec.ts`, which now carries the WS-7 stubs — additive only, WS-1's tests untouched otherwise).
+- **Currency platform-path details:** `adjustCurrencyForViewerById` now (1) parses scoped ids via `safeParseViewerId` → `getViewerByScopedId`, (2) treats raw `UC…`-shaped ids as YouTube and resolves `youtube:<id>` directly (`getViewerById` would scope them to twitch), (3) upserts missing YouTube records via `viewerDatabase.upsertYouTubeViewer` (displayName = raw channel id until the ingest upserts the real one), (4) adjusts YouTube records straight from the id-resolved record (username re-resolution is Twitch-only), (5) leaves ALL Twitch behavior byte-identical (regression-tested including `firebot:currency-update` metadata + auto-rank call).
+- **Tests added:** `youtube-events.spec.ts` (21), `youtube-variables.spec.ts` (18), `tests/currency-manager.spec.ts` (10) — 49 new tests; full suite 15 suites / 233 tests green; `tsc --noEmit` + `npm run lint` clean.
 
 ## WS-8 — Moderation parity + title/stream control
 
