@@ -289,25 +289,36 @@ interface YouTubeIngestMessage {
 - [ ] Sponsor/member message types do NOT render as chat text, and produce exactly one event each (WS-7 logs)
 - [ ] Stream end → reader stops within one poll tick; no unhandled rejections in logs
 
-## WS-5 — Chat outbound: dispatch layer, dual-platform responses, compose box
+## WS-5 — Chat outbound: dispatch layer, dual-platform responses, compose box **[x] DONE (code + unit tests; live QA in WS-11)**
 
 - **Depends on:** WS-1 (client), WS-3 (platform field)
 - **Owns:** `src/backend/chat/platform-dispatch.ts` (new), `src/backend/effects/builtin/chat.ts`, `src/backend/streaming-platforms/twitch/api/resource/chat.ts` (delegate refactor only), `src/backend/chat/commands/chat-command-handler.ts` (2 failure-message call sites), YT sender module `src/backend/integrations/builtin/youtube/chat-sender.ts`
 - **Owns (frontend):** `src/gui/app/services/chat-messages.service.js` (send payload gains no change if backend fans out — verify), `src/gui/app/templates/chat/_chat-messages.html` (chatter dropdown extension)
+- **Contract out (exact signatures implemented):**
+    - `platform-dispatch.ts`: `platformDispatch.sendChatMessage(message: string, options?: ChatDispatchOptions): Promise<ChatDispatchResult>` — options `{destination?: "both"|"twitch"|"youtube" (default "both" per D7), accountType?: string ("Streamer"|"Bot"|"Both", case-insensitive), replyToMessageId?: string | null (Twitch-only)}`. Returns `{twitch: {attempted, success, skipped?, error?, messageId?, isSlashCommand?}, youtube: {...same}}` — never throws; skip reasons: `empty-message`, `platform-not-connected` (Twitch not logged in), `not-live` / `missing-account` / `quota-budget-exhausted` (YouTube side). WS-6 (relay → Twitch side) and WS-8 (chat confirmations) call this.
+    - `chat-sender.ts`: `youTubeChatSender.sendChatMessage(text, {accountType?}): Promise<YouTubeSendResult>`, `isLive()`, `getLiveChatId()`, `setDailySendBudget(n)` / `getDailySendBudget()` (injectable `{sendGapMs, dailySendBudget, getDayKey}` for tests). Tracks liveChatId via `youtubeChatEvents` stream-online/offline; exported class `YouTubeChatSender` for tests.
 
 ### Tasks
-- [ ] `platform-dispatch.ts`: `sendChatMessage(message, {destination: "both"|"twitch"|"youtube", accountType, replyToMessageId?})` — Twitch side calls existing `TwitchApi.chat.sendChatMessage`; YouTube side calls `insertChatMessage(account, liveChatId)` via client; no-op + warn if that platform not connected/live
-- [ ] YT sender: account choice per chatter setting (bot default when bot linked, streamer fallback); 200-char truncate with ellipsis; serialize sends (YT rejects concurrent inserts? — queue with 250ms gap); quota guard counter (budget 80/day default, log at 50/75/80, block after cap with warning)
-- [ ] Chat effect (`effects/builtin/chat.ts`): add `destination` option (UI: dropdown Twitch/YouTube/Both; **default Both** per D7; whisper stays Twitch-only + tooltip); route through dispatch; strip `/me` handling for YT (no action messages — prepend asterisk removal: send raw text)
-- [ ] Command failure messages (`chat-command-handler.ts` restriction-fail + invalid-subcmd): route through dispatch (both platforms)
-- [ ] Twitch chat.ts API handler: keep behavior, but when `sendToBoth` setting true (new setting, default ON) → dispatch both. **Constraint:** single owner of the `chat:send-chat-message` listener — the YT side must NOT also subscribe
-- [ ] Compose box chatter dropdown: options become `Both / Streamer / Bot` (default preserved per existing setting); YT copy uses `youtube` chatter setting internally
-- [ ] Reply threading: YT has no replyToMessageId in v1 — ignore silently
+- [x] `platform-dispatch.ts`: `sendChatMessage(message, {destination: "both"|"twitch"|"youtube", accountType, replyToMessageId?})` — Twitch side calls existing `TwitchApi.chat.sendChatMessage`; YouTube side calls `insertChatMessage(account, liveChatId)` via client; no-op + debug log when a platform is not connected/live; never throws (per-side try/catch)
+- [x] YT sender: account choice per chatter setting (bot default when bot linked, streamer fallback — also for explicit "Bot" requests, mirroring Twitch's fallback; explicit "Streamer" never sends as the bot and skips silently when no streamer account); 200-char truncate with ellipsis; serialized sends (FIFO promise chain, 250ms gap); quota guard counter (budget 80/day default via `setDailySendBudget`, log warns at 50/75/day-count and at the cap, block after cap with one frontendCommunicator `"error"` message per day); missing account → silent no-op
+- [x] Chat effect (`effects/builtin/chat.ts`): add `destination` option (UI: dropdown Twitch/YouTube/Both; **default Both** per D7; whisper stays Twitch-only + tooltip, hidden pin section + validator error when destination is YouTube); route through dispatch; `/me` prefix kept for Twitch, stripped for YT at the dispatch layer (raw text)
+- [x] Command failure messages (`chat-command-handler.ts` restriction-fail + invalid-subcmd): route through dispatch (both platforms); Twitch send-as-reply + bot-voice preserved. NOTE (scope): cooldown + usage/min-args messages still send via Twitch only — they were NOT in the two-call-site write scope
+- [x] Twitch chat.ts API handler: behavior preserved, listener now delegates to `platformDispatch` with destination `both`/`twitch` per new global setting **`SendDashboardMessagesToBothPlatforms`** (default **true**; `src/types/settings.ts` + settings-manager defaults + UI toggle in `dashboard-settings.js` → Settings → Dashboard → Chat Sending). **Constraint held:** single owner of the `chat:send-chat-message` listener — chat-sender does not subscribe to it
+- [x] Compose box chatter dropdown: options are now `Both / Streamer / Bot` (default remains "Streamer"; Bot still gated on Twitch bot login); payload shape unchanged (`accountType`), backend fans out
+- [x] Reply threading: YT has no replyToMessageId in v1 — dispatch ignores reply ids for the YouTube side (effect tooltip updated; test asserts YT options never carry them)
 
 ### Acceptance
-- [ ] From dashboard with both platforms connected: typed message appears in Twitch AND YT chat; chatter setting honored per platform
-- [ ] Command triggered from either platform produces exactly one response per platform (no dupes when relay is also on — verify with WS-6 toggled)
-- [ ] Quota guard blocks after cap with visible log + frontend error message
+- [~] From dashboard with both platforms connected: typed message appears in Twitch AND YT chat; chatter setting honored per platform (unit-verified via mocked TwitchApi/client; dual-platform LIVE manual check stays in WS-11 QA)
+- [~] Command triggered from either platform produces exactly one response per platform (command-handler tests assert dispatch fan-out; dupes-with-relay check needs WS-6 + live, WS-11)
+- [~] Quota guard blocks after cap with visible log + frontend error message (unit-verified: 3 logger warns at 50/75/80, one `error` frontend modal per day, inserts stop; live quota audit in WS-11)
+
+### WS-5 coordination notes (for WS-6/WS-8/WS-10/WS-11)
+- **Call dispatch, not TwitchApi/YT client, for chat sends.** `platformDispatch.sendChatMessage(msg, {destination: "both", accountType: "Bot"})` from relay/YT→Twitch (WS-6) and chat confirmations (WS-8). Result carries per-platform success; treat `attempted:false` + `skipped` as silent no-ops, do not retry (quota guard blocks are terminal for that message).
+- **Quota accounting counts ALL YouTube sends** (bot or streamer chatter) — both accounts share one GCP project quota (core invariant #3). WS-6 relay shares this budget; call `youTubeChatSender.setDailySendBudget()` if a bigger/smaller cap is decided in QA.
+- Chatter semantics (documented in `ChatDispatchOptions`): `"Both"` → Twitch streamer + YT auto (bot-if-linked-else-streamer); `"Bot"` → Twitch bot (falls back to streamer) + YT bot (falls back to streamer); `"Streamer"` → streamer on both, YT skips silently if its streamer account is missing.
+- Compose dropdown: `cms.chatSender` now accepts `"Both"`; emote autocomplete still maps non-`Bot` → streamer emotes (outside WS-5 write set — WS-10 may extend). `chat-messages.service.js` payload shape untouched.
+- `platform-dispatch` imports `TwitchApi` (CJS cycle with `twitch/api/index.ts` is safe — late-bound, call-time access only). New backend startup consumer: `chat-command-handler` imports the dispatch, so chat-sender subscribes to `stream-online`/`stream-offline` during backend init — before live-monitor can emit (WS-2 confirmed the same signature: `(videoId, liveChatId, concurrentViewers?, startedAt?)`).
+- Tests: `tests/platform-dispatch.spec.ts` (25), `src/backend/integrations/builtin/youtube/__tests__/chat-sender.spec.ts` (26), `tests/chat-effect.spec.ts` (17), `tests/chat-command-handler.spec.ts` (6). Full suite at WS-5 completion: 19 suites / 306 tests green (`tsc --noEmit`, `npm run lint` green).
 
 ## WS-6 — Cross-platform chat relay
 
