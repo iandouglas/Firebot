@@ -29,6 +29,19 @@
             </ul>
         </div>
         <div class="flex justify-between" style="margin-left: auto;">
+            <div class="btn-group" uib-dropdown style="margin-right: 12px;">
+                <button id="platform-filter-dropdown" type="button" class="btn btn-default" uib-dropdown-toggle>
+                    <i class="fab fa-globe mr-2"></i> {{platformFilterLabel}} <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu" uib-dropdown-menu role="menu" aria-labelledby="platform-filter-dropdown">
+                    <li role="menuitem" ng-repeat="opt in platformFilterOptions">
+                        <a href ng-click="setPlatformFilter(opt.value)">
+                            <i class="fab {{opt.value === 'youtube' ? 'fa-youtube' : (opt.value === 'twitch' ? 'fa-twitch' : 'fa-globe')}} mr-4 text-center" style="width: 20px;" aria-label="{{opt.label}}"></i>
+                            {{opt.label}}
+                        </a>
+                    </li>
+                </ul>
+            </div>
             <button ng-click="showViewerSearchModal();" class="btn btn-default mr-4"><i class="far fa-search"></i> Search Twitch</button>
             <searchbar placeholder-text="Search Firebot viewers..." query="viewerSearch" style="flex-basis: 250px"></searchbar>
         </div>

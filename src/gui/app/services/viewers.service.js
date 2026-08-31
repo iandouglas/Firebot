@@ -20,6 +20,12 @@
 
             service.refreshViewers = markViewersChanged;
 
+            // WS-10: optional platform filter for the Viewers page. null/"all" =
+            // no filter; "twitch" / "youtube" filter the fetched page client-side
+            // (the backend viewer-database page handler is out of WS-10 scope, so
+            // this filters the currently-loaded page rather than server-side).
+            service.platformFilter = null;
+
             service.getViewersPage = async ({ page, pageSize, sortField, sortReversed, search }) => {
                 const result = await backendCommunicator.fireEventAsync("viewer-database:get-viewers-page", {
                     page,
@@ -28,8 +34,12 @@
                     sortReversed,
                     search
                 });
+                let viewers = result.viewers || [];
+                if (service.platformFilter === "twitch" || service.platformFilter === "youtube") {
+                    viewers = viewers.filter(v => (v.platform || "twitch") === service.platformFilter);
+                }
                 return {
-                    items: result.viewers,
+                    items: viewers,
                     total: result.total,
                     totalUnfiltered: result.totalUnfiltered
                 };

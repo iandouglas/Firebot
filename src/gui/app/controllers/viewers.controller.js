@@ -90,6 +90,23 @@
 
             $scope.vs = viewersService;
 
+            // WS-10: platform filter for the Viewers page. Applied client-side to
+            // the fetched page (backend page handler is out of WS-10 scope).
+            $scope.platformFilter = viewersService.platformFilter;
+            $scope.platformFilterOptions = [
+                { value: null, label: "All Platforms" },
+                { value: "twitch", label: "Twitch" },
+                { value: "youtube", label: "YouTube" }
+            ];
+            $scope.platformFilterLabel = "All Platforms";
+            $scope.setPlatformFilter = (value) => {
+                viewersService.platformFilter = value;
+                $scope.platformFilter = value;
+                const match = $scope.platformFilterOptions.find(o => o.value === value);
+                $scope.platformFilterLabel = match ? match.label : "All Platforms";
+                viewersService.refreshViewers();
+            };
+
 
             $scope.viewerSearch = "";
 
@@ -100,6 +117,17 @@
                     },
                     sortable: false,
                     cellTemplate: `<img ng-src="{{data.twitch ? data.profilePicUrl : '../images/placeholders/default-profile-pic.png'}}"  style="width: 25px;height: 25px;border-radius: 25px;"/>`,
+                    cellController: () => {}
+                },
+                {
+                    name: "PLATFORM",
+                    icon: "fa-globe",
+                    dataField: "platform",
+                    headerStyles: {
+                        'min-width': '90px'
+                    },
+                    sortable: true,
+                    cellTemplate: `<span ng-if="data.platform === 'youtube'" class="platform-badge" uib-tooltip="YouTube" tooltip-append-to-body="true"><i class="fab fa-youtube" style="color:#ff0000;"></i></span><span ng-if="data.platform !== 'youtube'" class="platform-badge" uib-tooltip="Twitch" tooltip-append-to-body="true"><i class="fab fa-twitch" style="color:#9146ff;"></i></span>`,
                     cellController: () => {}
                 },
                 {
