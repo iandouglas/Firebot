@@ -84,6 +84,16 @@ jest.mock("../../../../variables/replace-variable-manager", () => ({
     }
 }));
 
+// WS-4: youtube.ts side-effect imports ./chat-ingest (module-level registration).
+// The real chat-ingest pulls in the frontend-chat-manager → account-access →
+// data-access ⇄ logwrapper chain, which is unbootable under jest. Mock it here
+// (youtube.spec.ts doesn't exercise the chat reader).
+jest.mock("../chat-ingest", () => ({
+    __esModule: true,
+    startChatIngest: jest.fn(),
+    stopChatIngest: jest.fn()
+}));
+
 import { shell } from "electron";
 import authManager from "../../../../auth/auth-manager";
 import frontendCommunicator from "../../../../common/frontend-communicator";
