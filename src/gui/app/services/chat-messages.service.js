@@ -14,7 +14,9 @@
 
             service.autodisconnected = false;
 
-            // The active chat sender identifier, either "Streamer" or "Bot"
+            // The active chat sender identifier: "Both", "Streamer", or "Bot".
+            // "Both" fans the message out to Twitch AND YouTube (the backend's
+            // single chat:send-chat-message listener fans out via platform-dispatch).
             service.chatSender = "Streamer";
             // The pending but unsent outgoing chat message text
             service.messageText = "";
