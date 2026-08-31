@@ -72,7 +72,7 @@ const INTEGRATION_ID = "youtube";
 const integrationDefinition = {
     id: INTEGRATION_ID,
     name: "YouTube",
-    description: "Native YouTube support: chat, moderation, monetization events and stream control.",
+    description: "Native YouTube support: chat, moderation, monetization events and stream control. Link a streamer account (and optionally a separate bot account) to enable it. YouTube API usage is quota-limited (10,000 units/day), so chat sends are capped to protect your quota.",
     linkType: "auth",
     connectionToggle: true,
     configurable: true,
