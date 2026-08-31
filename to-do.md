@@ -266,28 +266,40 @@ interface YouTubeIngestMessage {
 - FYI: `viewers-api-controller.ts` JSON dump and `viewer-export-manager.ts` file exports expose scoped `_id`s (DB dumps — untouched, outside write set); GUI viewers page still shows raw ids by design (WS-10 polish if display wanted).
 - Test infra added (WS-3, for everyone): `ts-jest` + `ts-node` + `@types/jest` devDeps; `jest.config.ts` now has a ts-jest transform + an `electron` module mapper (`tests/mocks/electron-mock.ts`, owned/extended by WS-1's agent). Caveat: jest's default `testMatch` treats every file under `__tests__/` as a suite — name fixtures/specs accordingly.
 
-## WS-4 — YouTube chat ingest (read loop → commands + merged feed + roles)
+## WS-4 — YouTube chat ingest (read loop → commands + merged feed + roles) **[x] DONE (code + unit tests; live QA in WS-11)**
 
 - **Depends on:** WS-1 (contracts/client), WS-2 (liveChatId), WS-3 (viewer upsert + platform field)
 - **Owns:** `src/backend/integrations/builtin/youtube/chat-ingest.ts`, `chat-message-mapper.ts`, viewer-list glue `src/backend/chat/active-user-handler.ts` (extension only)
 - **Hook points (read-only):** `chatCommandHandler.handleChatMessage`, `FrontendChatManager.sendChatMessageToFrontend` — existing code, no edits unless acceptance fails
 
 ### Tasks
-- [ ] Reader loop: on `stream-online`, paginate `listChatMessages` respecting `pollingIntervalMillis`; dedupe by `messageId` (in-memory LRU, restart-safe thanks to page token)
-- [ ] `chat-message-mapper.ts`: map every `YouTubeIngestMessage`:
-  - [ ] `textMessageEvent` → `FirebotChatMessage`: `platform:"youtube"`, parts (text + `mention` for `@word` tokens), `id: messageId`, `userId: author.channelId` (raw!), `username`, `userDisplayName`, `profilePicUrl` from authorDetails, roles `[broadcaster|mod|sub]` from flags, badges minimal
-  - [ ] Non-text kinds → hand off to WS-7 emitter (no event triggering here)
-- [ ] Viewer DB touchpoint (WS-3 API): `upsertYouTubeViewer` on message (throttle: only if >60s since last write for that user) + currency/view-time increments via existing accrual calls scoped to platform:"youtube"
-- [ ] Feed → `FrontendChatManager.sendChatMessageToFrontend(msg)` (dashboard renders; platform badge is WS-10)
-- [ ] Commands → `chatCommandHandler.handleChatMessage(msg)` **but skip if message author is one of the four logged-in identities** (loop prevention invariant #2); verify `ignoreBot` default via `CommandManager` (if not default-on, enforce here)
-- [ ] Own-account self-filter: drop messages authored by yt-streamer or yt-bot channel IDs *after* feed display (they still show in dashboard — it IS the blended chat) — relay/command dedupe lives here
-- [ ] Active users: register YT chatters into ActiveUserHandler with platform tag so Chat Users panel includes them (WS-10 renders category)
-- [ ] Reconnect behavior: on reader crash/error-kind taxonomy (invariant #4): backoff, re-fetch liveChatId from monitor state, resume at latest token (skipping old messages is fine — log gap)
+- [x] Reader loop: on `stream-online`, paginate `listChatMessages` respecting `pollingIntervalMillis`; dedupe by `messageId` (in-memory LRU, restart-safe thanks to page token)
+- [x] `chat-message-mapper.ts`: map every `YouTubeIngestMessage`:
+  - [x] `textMessageEvent` → `FirebotChatMessage`: `platform:"youtube"`, parts (text + `mention` for `@word` tokens), `id: messageId`, `userId: author.channelId` (raw!), `username`, `userDisplayName`, `profilePicUrl` from authorDetails, roles `[broadcaster|mod|sub]` from flags, badges minimal
+  - [x] Non-text kinds → hand off to WS-7 emitter (no event triggering here)
+- [x] Viewer DB touchpoint (WS-3 API): `upsertYouTubeViewer` on message (throttle: only if >60s since last write for that user) + currency/view-time increments via existing accrual calls scoped to platform:"youtube"
+- [x] Feed → `FrontendChatManager.sendChatMessageToFrontend(msg)` (dashboard renders; platform badge is WS-10)
+- [x] Commands → `chatCommandHandler.handleChatMessage(msg)` **but skip if message author is one of the four logged-in identities** (loop prevention invariant #2); verify `ignoreBot` default via `CommandManager` (if not default-on, enforce here)
+- [x] Own-account self-filter: drop messages authored by yt-streamer or yt-bot channel IDs *after* feed display (they still show in dashboard — it IS the blended chat) — relay/command dedupe lives here
+- [x] Active users: register YT chatters into ActiveUserHandler with platform tag so Chat Users panel includes them (WS-10 renders category)
+- [x] Reconnect behavior: on reader crash/error-kind taxonomy (invariant #4): backoff, re-fetch liveChatId from monitor state, resume at latest token (skipping old messages is fine — log gap)
 
 ### Acceptance
-- [ ] Real broadcast: YT messages appear in dashboard feed; `!dado` typed on YT runs the Twitch-configured command exactly once
-- [ ] Sponsor/member message types do NOT render as chat text, and produce exactly one event each (WS-7 logs)
-- [ ] Stream end → reader stops within one poll tick; no unhandled rejections in logs
+- [ ] Real broadcast: YT messages appear in dashboard feed; `!dado` typed on YT runs the Twitch-configured command exactly once — pending WS-0 secrets + live channel
+- [ ] Sponsor/member message types do NOT render as chat text, and produce exactly one event each (WS-7 logs) — unit-verified; live pending WS-0
+- [ ] Stream end → reader stops within one poll tick; no unhandled rejections in logs — unit-verified; live pending WS-0
+
+### WS-4 completion notes (for WS-6 / WS-10 / WS-11)
+- **Reader loop self-schedules** via `scheduleNextPoll` chaining `pollStep`'s returned delay (a naive `setTimeout(() => pollStep())` would run exactly once — the loop must re-arm with the returned `pollingIntervalMillis`/backoff delay). Timers are `unref`'d; `nextPageToken` is memory-only per session (invariant #6).
+- **Terminal/transient taxonomy (invariant #4):** `offlineAt` in a response, a `chatEndedEvent` item, or a `chat-ended` API error → clean stop + `youtubeChatEvents.emit("stream-offline")` (consistency with WS-2's offline telemetry; the monitor's own next tick re-emits once — expected). `auth`/`quota`/`not-found` → stop WITHOUT emitting (the monitor owns stream-state announcements). `rate-limit`/`other` (5xx/network) → exponential backoff (2s/4s/8s) for up to 3 rapid attempts, then fall back to the monitor's 60s cadence with a fresh page token (gap logged). The monitor does NOT re-call `startChatIngest` while a broadcast stays live, so the reader must self-heal.
+- **Self-filter (invariant #2) is ingest-side:** custom commands default `ignoreStreamer`/`ignoreBot` OFF and the Twitch-side name match can't cover YT channel ids, so `chat-ingest` skips `handleChatMessage` for any of the four logged-in identities (YT streamer/bot by raw channel id via `youtubeAccountStore.getRawAccount`, Twitch streamer/bot by username via `AccountAccess.getAccounts()`). Feed + presence + viewer accrual still include own-account messages (blended chat parity with Twitch). WS-6 relay must self-filter independently (it already plans to).
+- **Viewer-DB accrual:** throttled `upsertYouTubeViewer` (60s/user) + `incrementDbField(scopeViewerId("youtube", id), "chatMessages")` every message + `viewerOnlineStatusManager.setChatViewerOnline` (flags the `youtube:<id>` record online so the existing 15-min view-time timer and the currency timer's `addCurrencyToOnlineViewers` reach YT viewers — no per-message currency hack needed; both timers operate on scoped record `_id`s).
+- **ActiveUserHandler extension:** new `addYouTubeActiveUser({id, username, displayName, profilePicUrl, roles})` registers platform-tagged YT chatters in the Chat Users panel (`_activeUsers` + `_cachedFrontendViewers`, sends `chat:viewer-joined`/`chat:viewer-updated`). It does NOT create the viewer record or increment chatMessages (the ingest owns those). **Coordination for WS-10:** `FrontendViewer` gained an optional `platform?: "twitch" | "youtube"` field (in `src/types/viewers.ts`, a minimal additive type change required for the platform tag to reach the frontend) — WS-10 renders the platform category/badge from it. `clearAllActiveUsers()` (Twitch disconnect + Clear List effect) flushes the shared active/online caches; YT chatters re-register on their next message, so the panel self-heals while the YT stream stays live. YT chatters are intentionally NOT added to `_onlineUsers` (Twitch-centric online-user effects/counts stay Twitch-only).
+- **Mapper coverage:** `mapChatItemToIngestMessage` is exhaustive over `textMessageEvent`, `superChatEvent`, `superStickerEvent`, `newSponsorEvent`, `memberMilestoneChatEvent`, `membershipGiftingEvent`, `giftMembershipReceivedEvent`, `tombstone` (→ `banned`), plus `sponsorOnlyModeStarted/EndedEvent` (→ `membersOnlyMode` flag, no ingest kind — WS-4 calls WS-7's `triggerMembersOnlyMode` directly) and `chatEndedEvent` (→ `chatEnded` flag). Unknown types map to no message and never throw. `ingestMessageToFirebotChatMessage` renders text kinds only (non-text → null) with `platform:"youtube"`, RAW `userId`, `@mention` parts, roles/badges from author flags, and `tagged` when the streamer's display name is mentioned.
+- **Tests added:** `chat-ingest.spec.ts` (22, incl. the WS-2 locked-signature/arity/idempotency assertions), `chat-message-mapper.spec.ts` (21), `tests/active-user-handler.spec.ts` (5). Full suite at WS-4 completion: 21 suites / 351 tests green (`tsc --noEmit`, `npm run lint` green).
+- **Test-infra note:** the fleshed-out `chat-ingest.ts` pulls in the `frontend-chat-manager` → `account-access` → `data-access` ⇄ `logwrapper` chain, which is unbootable under jest — `youtube.spec.ts` now mocks `../chat-ingest` (it only side-effect imports it) and `chat-ingest.spec.ts` mocks all heavy collaborators (frontend-chat-manager, account-access, viewer-database, viewer-online-status-manager, chat-command-handler, active-user-handler, account-store, youtube-api-client, events/event-handler, logger-cache).
+- **Coordination for WS-6 (relay):** the ingest emits every normalized message (text AND non-text) on `youtubeChatEvents` `"chat-message"`; WS-6 subscribes and self-filters the four identities independently. Own-account messages still render in the dashboard feed (blended chat) — the self-filter applies to command/relay processing only, so relay must NOT re-derive self from the feed.
+- **Coordination for WS-10:** `FrontendViewer.platform` (see above) + the `youtube:stream-info-update` payload (WS-2) drive the Chat Users platform category and stream-info badge.
 
 ## WS-5 — Chat outbound: dispatch layer, dual-platform responses, compose box **[x] DONE (code + unit tests; live QA in WS-11)**
 
