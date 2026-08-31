@@ -13,12 +13,19 @@
             <div class="modal-body">
 
                 <setting-container ng-if="$ctrl.integration.settingCategories != null" ng-repeat="categoryMeta in $ctrl.settingCategoriesArray | orderBy:'sortRank'"  header="{{categoryMeta.title}}" description="{{categoryMeta.description}}" pad-top="$index > 0 ? true : false" collapsed="false">
-                    <dynamic-parameter
-                        ng-repeat="setting in categoryMeta.settingsArray | orderBy:'sortRank'"
-                        name="{{setting.settingName}}"
-                        schema="setting"
-                        ng-model="$ctrl.integration.settingCategories[categoryMeta.categoryName].settings[setting.settingName].value"
-                    ></dynamic-parameter>
+                    <div ng-repeat="setting in categoryMeta.settingsArray | orderBy:'sortRank'">
+                        <dynamic-parameter
+                            ng-if="setting.type !== 'youtube-bot-auth'"
+                            name="{{setting.settingName}}"
+                            schema="setting"
+                            ng-model="$ctrl.integration.settingCategories[categoryMeta.categoryName].settings[setting.settingName].value"
+                        ></dynamic-parameter>
+                        <youtube-bot-auth-setting
+                            ng-if="setting.type === 'youtube-bot-auth'"
+                            schema="setting"
+                            bot-channel="$ctrl.integration.settings.botChannel"
+                        ></youtube-bot-auth-setting>
+                    </div>
                 </setting-container>
 
             </div>
@@ -44,6 +51,9 @@
             $ctrl.$onInit = function() {
                 if ($ctrl.resolve.integration) {
                     $ctrl.integration = JSON.parse(JSON.stringify($ctrl.resolve.integration));
+                    if ($ctrl.integration.settings == null) {
+                        $ctrl.integration.settings = {};
+                    }
                     $ctrl.settingCategoriesArray = Object.entries($ctrl.integration.settingCategories)
                         .map(([categoryName, sc]) => {
                             sc.categoryName = categoryName;
@@ -126,6 +136,77 @@
                         action: "save"
                     }
                 });
+            };
+        }
+    });
+
+    /*
+     * Custom rendering for the YouTube integration's "youtube-bot-auth" setting
+     * type. Link/Unlink send directly to the backend (the integration persists
+     * the bot token via its settings-update mechanism) — this setting is not
+     * part of the modal's Save flow.
+     */
+    angular.module("firebotApp").component("youtubeBotAuthSetting", {
+        bindings: {
+            schema: "<",
+            botChannel: "<"
+        },
+        template: `
+            <div>
+                <div class="integrations-list" style="display: flex; justify-content: space-between;">
+                    <div style="text-align: center;min-width: 100px;">
+                        <div style="display: flex;justify-content: center;align-items: center;min-height: 80px;">
+                            <img ng-if="$ctrl.displayChannel != null && $ctrl.displayChannel.avatarUrl" ng-src="{{ $ctrl.displayChannel.avatarUrl }}" width="80" style="border-radius: 5px;" />
+                            <span ng-if="$ctrl.displayChannel == null" class="muted" style="font-size: 24px;opacity: 0.7;">
+                                <i class="fas fa-user-slash"></i>
+                            </span>
+                        </div>
+                        <b>{{ $ctrl.displayChannel != null ? $ctrl.displayChannel.channelTitle : 'Not linked' }}</b>
+                    </div>
+                    <div style="display: flex;justify-content: center;align-items: center;">
+                        <button type="button" ng-if="!$ctrl.isLinked" class="btn btn-primary" ng-click="$ctrl.linkBotAccount()">
+                            <i class="fas fa-link"></i> Link Bot Account
+                        </button>
+                        <button type="button" ng-if="$ctrl.isLinked" class="btn btn-danger" ng-click="$ctrl.unlinkBotAccount()">
+                            <i class="fas fa-unlink"></i> Unlink Bot Account
+                        </button>
+                    </div>
+                </div>
+                <div class="muted" ng-if="!$ctrl.isLinked" style="font-size: 12px;padding-top: 5px;">
+                    The bot account should be a moderator on your channel.
+                </div>
+            </div>
+        `,
+        controller: function(backendCommunicator) {
+            const $ctrl = this;
+
+            $ctrl.isLinked = false;
+            $ctrl.displayChannel = null;
+
+            $ctrl.$onChanges = function(changes) {
+                if (changes.botChannel != null) {
+                    $ctrl.displayChannel = changes.botChannel.currentValue;
+                    $ctrl.isLinked = $ctrl.displayChannel != null;
+                }
+            };
+
+            $ctrl.$onInit = function() {
+                // Live status updates pushed by the backend after link/unlink.
+                backendCommunicator.on("youtube:bot-auth-update", function(data) {
+                    if (data == null) {
+                        return;
+                    }
+                    $ctrl.isLinked = data.linked === true;
+                    $ctrl.displayChannel = $ctrl.isLinked && data.channel != null ? data.channel : null;
+                });
+            };
+
+            $ctrl.linkBotAccount = function() {
+                backendCommunicator.send("youtube:link-bot-account");
+            };
+
+            $ctrl.unlinkBotAccount = function() {
+                backendCommunicator.send("youtube:unlink-bot-account");
             };
         }
     });
