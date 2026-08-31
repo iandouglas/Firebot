@@ -490,16 +490,22 @@ interface YouTubeIngestMessage {
   5. **Relay visibility:** with `ChatHideBotAccountMessages` ON and relay enabled, confirm YT→Twitch relayed copies (`[YT] Name: message`) stay visible while Firebot-authored command responses from the bot stay hidden.
   6. **Error toasts:** exhaust the YouTube daily send cap (or simulate) and confirm a danger toast appears (in addition to the standard error modal).
 
-## WS-11 — Validation, quota audit, documentation
+## WS-11 — Validation, quota audit, documentation **[x] DONE (code + docs; live QA blocked on SETUP.md]**
 
 - **Depends on:** everything
 - **Owns:** `docs/youtube-integration.md` (new), updates to `SETUP.md` final sync, test fixtures `tests/youtube/*`
-- [ ] Lint + `npx tsc --noEmit` + `npm test` full pass
-- [ ] Quota log: run a scripted 15-min dual-platform session, record actual unit consumption vs. budget; adjust caps if over
-- [ ] Manual QA script (documented in docs): link both accounts → weekly-expiry simulation (system clock +7d) → detect live → merged chat → commands both directions → responses both platforms → relay loop check → moderation → title sync → event test-fires
-- [ ] Failure drills: revoke token mid-stream (re-auth path), kill network 60s (reader recovery), quota-exceeded simulation (mock)
-- [ ] Consent-screen production flip: document exact steps + expected "unverified app" flow (from D4)
-- [ ] README note in repo root tying to upstream merge strategy (fork tracking)
+- [x] Lint + `npx tsc --noEmit` + `npm test` full pass — **27 suites / 428 tests green** at `07bfea46a`
+- [~] Quota log: run a scripted 15-min dual-platform session, record actual unit consumption vs. budget; adjust caps if over — **documented in `docs/youtube-integration.md` §3; BLOCKED on user completing `SETUP.md` (no live creds yet)**
+- [~] Manual QA script (documented in docs): link both accounts → weekly-expiry simulation (system clock +7d) → detect live → merged chat → commands both directions → responses both platforms → relay loop check → moderation → title sync → event test-fires — **documented in `docs/youtube-integration.md` §4; BLOCKED on live creds**
+- [~] Failure drills: revoke token mid-stream (re-auth path), kill network 60s (reader recovery), quota-exceeded simulation (mock) — **documented in `docs/youtube-integration.md` §5; quota-exceeded simulation is unit-verified, the rest need live creds**
+- [x] Consent-screen production flip: document exact steps + expected "unverified app" flow (from D4) — **`docs/youtube-integration.md` §6 + `SETUP.md` §6**
+- [x] README note in repo root tying to upstream merge strategy (fork tracking) — **`README.md` "Fork: YouTube streaming support"**
+
+### WS-11 coordination follow-ups (from WS-10 notes) — DONE in `07bfea46a`
+- [x] **Notification-center quota entry:** `chat-sender.ts` now calls `NotificationManager.addNotification(...)` (persisted) when the daily send cap is hit, in addition to the toast. `chat-sender.spec.ts` mocks `notification-manager` (the real one pulls in the data-access/logwrapper TDZ chain) and asserts the entry.
+- [x] **Server-side viewers platform filter:** `viewer-database:get-viewers-page` now accepts `platform` ("twitch"|"youtube") and filters server-side; `viewers.service.js` passes it and keeps the client-side filter as a belt-and-suspenders fallback. 3 new tests in `tests/viewer-database.spec.ts`.
+- [x] **Relay-marker fragility (partial):** `chat-messages.service.js` now tags relayed copies only when authored by the **bot account** AND prefixed `[YT] ` (injects `accountAccess`). A fully-authoritative relay-side marker is NOT feasible: the frontend send (`twitch-chat-listeners.js`) fires before the relay's chat handler, so a marker set by the relay can't reach the dashboard item in time. Residual fragility (a bot-authored command response starting with `[YT] `) is documented in `docs/youtube-integration.md` §7.
+- [x] **Docs:** `docs/youtube-integration.md` (new), `SETUP.md` §6 sync, `README.md` fork note.
 
 ---
 

@@ -135,5 +135,5 @@ until the corresponding channel features exist:
 
 ## 6. Coming Later (placeholders — will be expanded)
 
-- [ ] Flip OAuth consent screen to **Production** status after the integration is stable (removes the 7-day token expiry; expect the "unverified app" warning screen for non-test users)
-- [ ] Optional: request a quota increase if needed
+- [ ] Flip OAuth consent screen to **Production** status after the integration is stable (removes the 7-day token expiry; expect the "unverified app" warning screen for non-test users) — full steps in [`docs/youtube-integration.md`](docs/youtube-integration.md) §6
+- [ ] Optional: request a quota increase if needed — see the quota audit in [`docs/youtube-integration.md`](docs/youtube-integration.md) §3

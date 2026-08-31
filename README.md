@@ -28,3 +28,26 @@ We'd love to hear your idea! You can submit a Feature Request [here](https://git
 This code (everything in the repository) is provided under the GNU General Public License v3.0. This means that you're free to take the code in this repository and modify it in whatever way you like and distribute this code for any purpose. However, if you release it then it must be under this same license, make it open source, and provide documentation of changes made. All versions must have copyright credit pointing back to this source.
 
 **Anything using this code must be under the GNU Public License, and a copyright credit must point back here.**
+
+## Fork: YouTube streaming support
+
+This is a **personal fork** (`iandouglas/Firebot`) that adds native YouTube streaming support
+on top of upstream Firebot. Upstream (crowbartools/Firebot) has explicitly declined to add
+YouTube support, so this lives only in the fork.
+
+- **What's added:** see [`docs/youtube-integration.md`](docs/youtube-integration.md) and
+  [`to-do.md`](to-do.md).
+- **Manual setup you must do:** [`SETUP.md`](SETUP.md) (GCP project, OAuth client,
+  `secrets.json`, bot-as-moderator).
+- **Merge strategy:** the fork tracks upstream `master`/`v5`. To pull upstream changes:
+  ```sh
+  git remote add upstream https://github.com/crowbartools/Firebot.git
+  git fetch upstream
+  git merge upstream/master
+  ```
+  The YouTube integration is isolated under `src/backend/integrations/builtin/youtube/` and
+  wired through `youtube.ts`, so upstream merges should not conflict with it in normal
+  circumstances. If a conflict does arise, resolve it in favor of the integration's
+  `youtube.ts` wiring (the coordinator-owned file).
+- **Push target:** this fork pushes to `mine/main` (`github.com/iandouglas/Firebot.git`).
+  Never push to the upstream repo.
