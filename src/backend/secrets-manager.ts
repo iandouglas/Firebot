@@ -10,6 +10,14 @@ interface FirebotSecrets {
     streamLabsClientId: string;
     streamLabsClientSecret: string;
     fontAwesome5KitId: string;
+
+    /**
+     * Google OAuth client for the YouTube integration (WS-1). Optional: when
+     * missing, the YouTube integration stays disabled with a startup warning —
+     * these keys are deliberately NOT in expectedKeys so boot never crashes.
+     */
+    googleClientId?: string;
+    googleClientSecret?: string;
 }
 
 class SecretsManager {
