@@ -7,8 +7,11 @@ import type {
     Animation
 } from "../../../../types";
 
+import { getPlatformLogoMarkup } from "./platform-logo";
+
 export type ChatWidgetSettings = {
     showTimestamps: boolean;
+    showPlatformLogos: boolean;
     showAvatars: boolean;
     showBadges: boolean;
     showPronouns: boolean;
@@ -67,6 +70,13 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
             title: "Show Timestamps",
             type: "boolean",
             default: false
+        },
+        {
+            name: "showPlatformLogos",
+            title: "Show Platform Logos",
+            description: "Show a Twitch or YouTube logo next to each message so you can tell which platform it came from",
+            type: "boolean",
+            default: true
         },
         {
             name: "showAvatars",
@@ -736,6 +746,16 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
                     messageInfoElem.appendChild(pronounElem);
                 }
 
+                if (config.settings.showPlatformLogos === true) {
+                    const platformLogoMarkup = getPlatformLogoMarkup(
+                        chatMessage.platform,
+                        `chat-platform-logo-${config.id}`
+                    );
+                    if (platformLogoMarkup.length > 0) {
+                        messageInfoElem.insertAdjacentHTML("beforeend", platformLogoMarkup);
+                    }
+                }
+
                 const individualUsernameStyles: Record<string, string> = {
                     "color": `${chatMessage.color}`
                 };
@@ -958,6 +978,11 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
                     "height": usernameFontSize
                 };
 
+                const platformLogoStyles: Record<string, string> = {
+                    "height": usernameFontSize,
+                    "margin-right": "5px"
+                };
+
                 const pronounStyles: Record<string, string> = {
                     "border": `solid calc(${messageFontSize} * 0.05) ${config.settings?.messageFontOptions?.color || "#FFFFFF"}`,
                     "border-radius": `calc(${messageFontSize} * 0.25)`,
@@ -1041,6 +1066,10 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
 
                         .chat-badge-${config.id} {
                             ${utils.stylesToString(badgeStyles)}
+                        }
+
+                        .chat-platform-logo-${config.id} {
+                            ${utils.stylesToString(platformLogoStyles)}
                         }
 
                         .chat-pronouns-${config.id} {
