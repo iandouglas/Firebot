@@ -55,17 +55,25 @@ if [ -n "$BINDING" ]; then
     fi
 fi
 
-# 4. secrets.json present? Firebot refuses to boot without it.
+# 4. Self-heal the Electron binary. The electron npm package's postinstall
+#    downloads the actual binary; if it was skipped (fresh npm ci / interrupted
+#    install), electron fails to launch. Re-run its install script if needed.
+if [ ! -f node_modules/electron/path.txt ] || [ ! -d node_modules/electron/dist ]; then
+    echo "==> Installing Electron binary (node node_modules/electron/install.js)..."
+    node node_modules/electron/install.js
+fi
+
+# 5. secrets.json present? Firebot refuses to boot without it.
 if [ ! -f src/secrets.json ]; then
     echo "WARNING: src/secrets.json is missing. Firebot will not boot." >&2
     echo "         Create it from src/secrets.template.json and fill in the keys." >&2
     echo "         See SETUP.md section 2." >&2
 fi
 
-# 5. Build (compiles TypeScript -> build/, SCSS, vite, index.html).
+# 6. Build (compiles TypeScript -> build/, SCSS, vite, index.html).
 echo "==> Building (grunt prep)..."
 npx grunt prep
 
-# 6. Launch.
+# 7. Launch.
 echo "==> Launching Firebot..."
 exec ./node_modules/.bin/electron . --dev
