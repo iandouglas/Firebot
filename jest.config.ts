@@ -25,6 +25,10 @@ const config: Config = {
     // Automatically clear mock calls, instances, contexts and results before every test
     clearMocks: true,
 
+    // Ignore the compiled build output (grunt prep emits build/**/*.spec.js copies
+    // that would otherwise be picked up as duplicate/failing suites) and node_modules.
+    testPathIgnorePatterns: ["/node_modules/", "/build/", "/dist/", "/.git/"],
+
     // Indicates which provider should be used to instrument code for coverage
     coverageProvider: "v8",
 };

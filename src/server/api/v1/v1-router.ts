@@ -236,4 +236,11 @@ router.route("/control-deck/decks/:deckId")
 router.route("/control-deck/decks/:deckId/controls/:controlId/interact")
     .post(controlDeck.pinMiddleware, controlDeck.interactWithControl);
 
+// Profiles (Stream Deck / external profile switching)
+import * as profiles from "./controllers/profiles-api-controller";
+
+router.route("/profiles/switch/:profileId")
+    .get(profiles.switchProfile)
+    .post(profiles.switchProfile);
+
 export = router;
