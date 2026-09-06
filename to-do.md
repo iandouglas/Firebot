@@ -524,11 +524,15 @@ interface YouTubeIngestMessage {
 **Request:** blended Twitch+YouTube chat overlay should show which platform each message came from, in the form `[9:27] (youtube logo) (youtube username): message`.
 
 ### Tasks
-- [x] New pure helper `src/backend/overlay-widgets/builtin-types/chat/platform-logo.ts` — inline SVG data URIs (Twitch purple / YouTube red), offline-safe; `getPlatformLogoMarkup(platform, className)`; `undefined` platform treated as Twitch (legacy).
 - [x] `showPlatformLogos` setting (default `true`) on `firebot:chat` widget (`ChatWidgetSettings` + settingsSchema).
 - [x] Render logo before the username in `generateChatMessageHtml`; CSS sizing via `.chat-platform-logo-<id>` (height = username font size, 5px margin).
-- [x] 8 jest tests for the helper; full suite green (30 suites / 452 tests), `tsc --noEmit` + lint clean.
-- [x] Committed + pushed to `mine/main` (`398259f9f`).
+- [x] Logo helpers ship as a classic browser script `src/resources/overlay/js/platform-logo.js` exposing `window.FirebotPlatformLogo`, declared as the widget's `overlayExtension` js dependency, and called as a global from the eventHandler.
+- [x] 6 jest tests load the real browser script (with a `window` shim); full suite green (30 suites / 457 tests), `tsc --noEmit` + lint clean.
+- [x] Committed + pushed to `mine/main` (`398259f9f` initial; `4e82e1fef` serializer fix).
+
+### Pitfalls
+- **Extension-widget eventHandlers are serializer-restricted:** `firebot:chat`'s `overlayExtension.eventHandler` is serialized (`toString`) and re-evaluated in the browser, so it can only reference browser globals — a TS `import` compiles to a CommonJS binding (`platform_logo_1`) that doesn't exist at runtime and throws `platform_logo_1 is not defined`. Any shared logic for extension widgets must be a classic-script global declared via `overlayExtension.dependencies.js` (same pattern as `countdown-to-date` -> global `luxon`).
+- **OBS browser-source URL:** use the direct `http://localhost:7472/overlay?instance=chat` rather than the `file://…/overlay.html` wrapper. The wrapper is a redirect that OBS's Chromium often won't run; the direct URL always works. Rebuild via `./start.sh` for the compiled `chat.ts` change to take effect.
 
 ### Notes / usage (not code)
 - **Combined chat already reaches the overlay** — both Twitch and YouTube messages flow through `FrontendChatManager.sendChatMessageToFrontend` → `sendChatMessageToChatWidget`, which pushes to every active `firebot:chat` widget. No ingest change needed.
