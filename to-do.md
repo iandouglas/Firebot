@@ -519,6 +519,25 @@ interface YouTubeIngestMessage {
 | 4 | WS-10 | 1 | Wave 3 |
 | 5 | WS-11 | 1 (+user LIVE test) | Wave 4 + SETUP.md done |
 
+## Post-WS-11 — Overlay: platform logos in chat widget **[x] DONE (code + tests; live QA pending)**
+
+**Request:** blended Twitch+YouTube chat overlay should show which platform each message came from, in the form `[9:27] (youtube logo) (youtube username): message`.
+
+### Tasks
+- [x] New pure helper `src/backend/overlay-widgets/builtin-types/chat/platform-logo.ts` — inline SVG data URIs (Twitch purple / YouTube red), offline-safe; `getPlatformLogoMarkup(platform, className)`; `undefined` platform treated as Twitch (legacy).
+- [x] `showPlatformLogos` setting (default `true`) on `firebot:chat` widget (`ChatWidgetSettings` + settingsSchema).
+- [x] Render logo before the username in `generateChatMessageHtml`; CSS sizing via `.chat-platform-logo-<id>` (height = username font size, 5px margin).
+- [x] 8 jest tests for the helper; full suite green (30 suites / 452 tests), `tsc --noEmit` + lint clean.
+- [x] Committed + pushed to `mine/main` (`398259f9f`).
+
+### Notes / usage (not code)
+- **Combined chat already reaches the overlay** — both Twitch and YouTube messages flow through `FrontendChatManager.sendChatMessageToFrontend` → `sendChatMessageToChatWidget`, which pushes to every active `firebot:chat` widget. No ingest change needed.
+- **Routing to a specific overlay instance:** in the chat widget's edit modal, set the **Overlay Instance** dropdown to `chat`, then add `http://localhost:7472/overlay?instance=chat` as the OBS browser source. Effects each have their own **Overlay Instance** setting to route specific events to specific instances.
+- **"Wide margins" + "only ~10 lines":** this is widget sizing, not a bug. New widgets default to a centered 16:9 box at 50% of the overlay (`overlay-position-editor.js` `resetModelToDefault`). Resize the chat widget in its **Position** editor to a tall/narrow box at the edge; the container height is what limits how many lines show (trim cap is 100 messages).
+- **chat-advanced widget** not touched — it uses a user-supplied HTML/CSS template; adding a `{{platformLogo}}` template variable there is a possible follow-up.
+
+---
+
 ## Roadmap (post-v1, explicitly out of scope now)
 
 - YouTube live polls (create/read via pollDetails)
