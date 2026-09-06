@@ -7,7 +7,13 @@ import type {
     Animation
 } from "../../../../types";
 
-import { getPlatformLogoMarkup } from "./platform-logo";
+// Global provided by the `/overlay/js/platform-logo.js` script (declared as a
+// dependency below). Extension-widget eventHandlers are serialized to function
+// strings and can only reference browser globals, so the logo helper must be a
+// global rather than an ES import.
+declare const FirebotPlatformLogo: {
+    getPlatformLogoMarkup: (platform: "twitch" | "youtube" | undefined, className: string) => string;
+};
 
 export type ChatWidgetSettings = {
     showTimestamps: boolean;
@@ -572,6 +578,11 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
         }
     ],
     overlayExtension: {
+        dependencies: {
+            js: [
+                "/overlay/js/platform-logo.js"
+            ]
+        },
         eventHandler: (event: WidgetOverlayEvent<ChatWidgetSettings, ChatWidgetState>, utils: IOverlayWidgetEventUtils) => {
             const generateAnnouncementBarStyle = (
                 announcementColor: FirebotChatMessage["announcementColor"]
@@ -747,7 +758,7 @@ export const chat: OverlayWidgetType<ChatWidgetSettings, ChatWidgetState> = {
                 }
 
                 if (config.settings.showPlatformLogos === true) {
-                    const platformLogoMarkup = getPlatformLogoMarkup(
+                    const platformLogoMarkup = FirebotPlatformLogo.getPlatformLogoMarkup(
                         chatMessage.platform,
                         `chat-platform-logo-${config.id}`
                     );
