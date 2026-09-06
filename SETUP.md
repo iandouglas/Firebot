@@ -111,6 +111,24 @@ keys).
 - [ ] Also confirm the bot account can actually chat: open one of your past live streams
   as the bot account and send a test message (catches "blocked words"/ban filter issues early).
 
+### Troubleshooting: "Error 400: policy_enforced" when linking the bot account
+
+If Google shows **`Error 400: policy_enforced`** with a message about the **Advanced
+Protection Program** when you try to link the bot account, the bot account has Google's
+**Advanced Protection Program (APP)** enabled. APP blocks all non-Google third-party apps
+from accessing the account via OAuth — including this unverified personal app. The **streamer**
+account links fine because it doesn't have APP on.
+
+**Fix:** turn off Advanced Protection on the bot account (it's a low-risk automation account):
+
+- Sign into Google as the **bot** account → **Security** → **Advanced Protection**
+  (<https://myaccount.google.com/security> → *Advanced Protection*)
+- **Remove** the account from Advanced Protection (re-verify as prompted)
+- Reopen Firebot and **re-link the bot account** — the OAuth should now succeed
+
+If you'd rather keep APP, create/reuse a different Google account for the bot that doesn't
+have APP enabled (then add it as a moderator on both channels again).
+
 ---
 
 ## 4. Quota Awareness (reference, no action required now)
